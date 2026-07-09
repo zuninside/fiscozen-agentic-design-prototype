@@ -1,0 +1,19 @@
+{
+  "name": "eslint-plugin-fz",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Atomic-design ESLint rules for the agentic-design hub",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test:unit": "node --test src/**/*.test.js",
+    "lint": "eslint src --cache",
+    "type-check": "exit 0"
+  },
+  "peerDependencies": {
+    "eslint": ">=8.40.0"
+  }
+}

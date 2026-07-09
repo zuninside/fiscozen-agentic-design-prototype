@@ -1,0 +1,74 @@
+{
+  "name": "@fz-design/agentic-design-hub",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Living designs hub — bridges designers (Claude) and engineers (Claude Code) using the Fiscozen design system",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev:accounting": "pnpm --filter @fz-design/accounting dev",
+    "dev:customers": "pnpm --filter @fz-design/customers dev",
+    "dev:duties": "pnpm --filter @fz-design/duties dev",
+    "build": "nx run-many --target=build",
+    "build:affected": "nx affected -t build",
+    "test": "nx run-many --target=test:unit",
+    "test:affected": "nx affected -t test:unit",
+    "test:coverage": "nx run-many --target=test:unit -- --coverage",
+    "type-check": "nx run-many --target=type-check",
+    "type-check:affected": "nx affected -t type-check",
+    "lint": "eslint . --cache",
+    "lint:fix": "eslint . --cache --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky || true",
+    "annotate-design": "tsx scripts/annotate-design-html.ts",
+    "test:scripts": "vitest run -c vitest.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@fiscozen/prettier-config": "0.1.0",
+    "@types/node": "^22.10.5",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "@vue/eslint-config-prettier": "^10.2.0",
+    "@vue/eslint-config-typescript": "^14.2.0",
+    "@vue/tsconfig": "^0.7.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-fz": "workspace:*",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-vue": "^9.32.0",
+    "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "node-html-parser": "^7.1.0",
+    "nx": "20.7.1",
+    "prettier": "^3.4.2",
+    "prettier-plugin-tailwindcss": "^0.6.9",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0",
+    "typescript": "~5.7.0",
+    "vitest": "^3.2.4",
+    "vue-eslint-parser": "^9.4.3"
+  },
+  "lint-staged": {
+    "*.{js,ts,vue}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css}": [
+      "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "vue": "^3.4.13"
+      }
+    }
+  }
+}

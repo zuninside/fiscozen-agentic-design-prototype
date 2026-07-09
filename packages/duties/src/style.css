@@ -1,0 +1,5 @@
+@import '@fiscozen/style/output/global.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "duties",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:duties"],
+      "port": 5176
+    }
+  ]
+}
