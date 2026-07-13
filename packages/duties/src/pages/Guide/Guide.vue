@@ -207,7 +207,7 @@ const onRowAction = (
               {{
                 guides.length
                   ? 'Nessuna guida corrisponde ai filtri selezionati.'
-                  : 'Non sono ancora state create delle guide.'
+                  : 'Non sono ancora state create delle guide in questo progetto'
               }}
             </p>
           </div>

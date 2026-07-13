@@ -17,7 +17,6 @@ import { FzStepper } from '@fiscozen/stepper'
 import { FzAlert } from '@fiscozen/alert'
 import { FzCard } from '@fiscozen/card'
 import { FzToastQueue, enqueueToast, type Toast } from '@fiscozen/toast'
-import { FzTabs, FzTab } from '@fiscozen/tab'
 import { useGuides, guideTemaOptions, type GuideStep, type GuideStepDomanda, type GuideStepDocumento } from '../../composables/useGuides'
 import { useImportiCatalog } from '../../composables/useImportiCatalog'
 
@@ -26,7 +25,7 @@ const route = useRoute()
 const projectId = computed(() => Number(route.params.projectId))
 const goHome = () =>
   router.push({ name: 'progetto', params: { projectId: String(projectId.value) } })
-const { addGuide, updateGuide, getGuide, getLiveVersion } = useGuides()
+const { addGuide, updateGuide, getGuide } = useGuides()
 
 const editingId = computed(() =>
   route.params.id ? Number(route.params.id) : undefined
@@ -136,6 +135,18 @@ const adempimentoOptions = [
 // "Un nuovo FO Task" branch: define a brand new frontoffice task.
 const foTaskIdentifier = ref('')
 const foTaskTitle = ref('')
+// L'identificativo è sempre in sola lettura e si autocompila dal titolo:
+// MAIUSCOLO, accenti rimossi, ogni sequenza non alfanumerica → underscore.
+const toIdentifier = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+watch(foTaskTitle, (title) => {
+  foTaskIdentifier.value = toIdentifier(title)
+})
 const foTaskQueryTarget = ref<string | number | undefined>()
 const foTaskQueryTargetOptions = [
   { value: 'active_users', label: 'Utenti attivi' },
@@ -146,8 +157,16 @@ const foTaskQueryTargetOptions = [
   { value: 'incomplete_profile', label: 'Profilo incompleto' },
   { value: 'welfare_pending', label: 'Contributi previdenziali da versare' }
 ]
+const foTaskStartDate = ref<Date | null>(null)
+const foTaskEndDate = ref<Date | null>(null)
+// La data di fine non può essere antecedente a quella di inizio
+watch(foTaskStartDate, (start) => {
+  if (start && foTaskEndDate.value && foTaskEndDate.value < start) {
+    foTaskEndDate.value = null
+  }
+})
 const foTaskHasDeadline = ref(false)
-const foTaskDeadline = ref('')
+const foTaskDeadline = ref<Date | null>(null)
 
 const addStep = () => {
   const id = steps.value.length ? Math.max(...steps.value.map((s) => s.id)) + 1 : 1
@@ -178,73 +197,8 @@ if (editingId.value) {
   steps.value.push({ id: 1, title: '', description: '', media: [], alert: null, importi: [], documenti: [], domande: [] })
 }
 
-// --- Version tabs (Bozza / Live) ---------------------------------------------
-// A published guide that has since been edited & saved as a draft has two
-// distinct versions: the read-only published "Live" snapshot and the editable
-// working "Bozza". The tabs let the author switch between them.
-type EditorState = {
-  guideName: string
-  tema: string | number | undefined
-  frontofficeTask: string | number | undefined
-  taskYear: string | number | undefined
-  steps: GuideStep[]
-}
-
-const captureState = (): EditorState => ({
-  guideName: guideName.value,
-  tema: tema.value,
-  frontofficeTask: frontofficeTask.value,
-  taskYear: taskYear.value,
-  steps: steps.value
-})
-
-const applyState = (s: EditorState) => {
-  guideName.value = s.guideName
-  tema.value = s.tema
-  frontofficeTask.value = s.frontofficeTask
-  taskYear.value = s.taskYear
-  steps.value = mapSteps(s.steps)
-  selection.value = 'settings'
-}
-
-const activeVersion = ref<'bozza' | 'live'>('bozza')
-const editingGuide = computed(() => (editingId.value ? getGuide(editingId.value) : undefined))
-// Tabs appear only when both a Live snapshot and a divergent Bozza exist.
-const hasVersions = computed(
-  () => !!editingGuide.value?.published && !!editingGuide.value?.hasDraftChanges
-)
-const isViewingLive = computed(() => hasVersions.value && activeVersion.value === 'live')
-
-// Holds unsaved Bozza edits while the read-only Live version is on screen.
-let bozzaBackup: EditorState | null = null
-
-const onVersionChange = (title: string) => {
-  const next: 'bozza' | 'live' = title === 'Live' ? 'live' : 'bozza'
-  if (next === activeVersion.value) return
-  if (next === 'live') {
-    bozzaBackup = captureState()
-    const live = editingId.value ? getLiveVersion(editingId.value) : undefined
-    if (live) {
-      applyState({
-        guideName: live.title,
-        tema: live.tema,
-        frontofficeTask: live.frontofficeTask,
-        taskYear: live.taskYear,
-        steps: live.steps
-      })
-    }
-  } else if (bozzaBackup) {
-    applyState(bozzaBackup)
-    bozzaBackup = null
-  }
-  activeVersion.value = next
-}
-
-// When the tabs disappear (e.g. after publishing merges Bozza into Live) fall
-// back to the editable Bozza.
-watch(hasVersions, (has) => {
-  if (!has) activeVersion.value = 'bozza'
-})
+// Once a guide is published it becomes read-only: the whole editor is locked
+// (see `isPublished`) so a published guide can no longer be modified.
 
 const addAlert = () => {
   if (!currentStep.value || currentStep.value.alert) return
@@ -313,7 +267,7 @@ const removeRichiesta = (documento: GuideStepDocumento, index: number) => {
 const domandaTypeOptions = [
   { value: 'single', label: 'Scelta singola' },
   { value: 'multiple', label: 'Scelta multipla' },
-  { value: 'yesno', label: 'Sì / No' }
+  { value: 'importi', label: 'Importi' }
 ]
 
 const addDomanda = () => {
@@ -415,6 +369,7 @@ const sampleImportoValue = '€ 12.000,00'
 // Preview-only answer state for the interactive question mock
 const previewSingle = ref<Record<number, string | undefined>>({})
 const previewMultiple = ref<Record<number, string[]>>({})
+const previewImporto = ref<Record<number, string>>({})
 watch(
   () => [previewStep.value?.id, previewStep.value?.domande.length] as const,
   () => {
@@ -430,6 +385,7 @@ watch(
   () => previewStep.value?.id,
   () => {
     previewSingle.value = {}
+    previewImporto.value = {}
   }
 )
 
@@ -469,8 +425,8 @@ watch(
         </div>
         <div class="bo-header__actions">
           <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" />
-          <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isViewingLive" @click="save" />
-          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isViewingLive" @click="publish" />
+          <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
+          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished" @click="publish" />
         </div>
       </header>
 
@@ -503,7 +459,7 @@ watch(
             />
           </div>
           <div class="bo-steps__add">
-            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isViewingLive" @click="addStep" />
+            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isPublished" @click="addStep" />
           </div>
           <div class="bo-steps__switch">
             <FzSelect
@@ -518,13 +474,7 @@ watch(
         <!-- Column 2: editor -->
         <section class="bo-editor">
           <!-- Version tabs: shown only when a Live snapshot and a divergent Bozza both exist -->
-          <div v-if="hasVersions" class="bo-editor__header">
-            <FzTabs environment="backoffice" tab-style="fullWidth" @change="onVersionChange">
-              <FzTab title="Bozza" :initial-selected="activeVersion === 'bozza'" />
-              <FzTab title="Live" :initial-selected="activeVersion === 'live'" />
-            </FzTabs>
-          </div>
-          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isViewingLive }">
+          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isPublished }">
           <template v-if="isSettings">
             <div class="bo-section">
               <div class="bo-section__title">
@@ -537,7 +487,7 @@ watch(
                   label="Nome della guida"
                   placeholder="Scrivi il nome della guida"
                   environment="backoffice"
-                  :disabled="isViewingLive"
+                  :disabled="isPublished"
                 />
                 <FzSelect
                   v-model="tema"
@@ -545,7 +495,7 @@ watch(
                   placeholder="Seleziona un tema"
                   :options="guideTemaOptions"
                   environment="backoffice"
-                  :disabled="isViewingLive"
+                  :disabled="isPublished"
                 />
               </div>
             </div>
@@ -565,74 +515,87 @@ watch(
                     name="guide-link"
                     value="adempimento"
                     label="adempimento"
-                    title="Un adempimento"
-                    subtitle="Ad esempio: Certificazione Unica, Dichiarazione dei Redditi, Dichiarazione IVA, 770"
+                    title="Un'attività esistente"
                     orientation="vertical"
                     :has-radio="false"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                   <FzRadioCard
                     v-model="guideLink"
                     name="guide-link"
                     value="fotask"
                     label="fotask"
-                    title="Un nuovo FO Task"
-                    subtitle="Potrai creare un nuovo task da mostrare all'utente prima di aprire la guida"
+                    title="Una nuova attività"
                     orientation="vertical"
                     :has-radio="false"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </FzRadioGroup>
 
                 <div v-if="guideLink === 'adempimento'" class="bo-link-detail">
+                  <p class="bo-link-intro">La guida verrà associata all'adempimento che sceglierai qui di seguito.<br />Ad esempio: Certificazione Unica, Dichiarazione dei Redditi, Dichiarazione IVA, 770.</p>
                   <FzSelect
                     v-model="adempimento"
                     label="Quale adempimento?"
                     :options="adempimentoOptions"
                     filterable
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </div>
 
                 <div v-else class="bo-link-detail bo-link-detail--fotask">
-                  <FzInput
-                    v-model="foTaskIdentifier"
-                    label="Identificativo"
-                    placeholder="USER_TAX_DECLARATION"
-                    environment="backoffice"
-                    :disabled="isViewingLive"
-                  >
-                    <template #helpText>Ad esempio: USER_TAX_DECLARATION</template>
-                  </FzInput>
+                  <p class="bo-link-intro">Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.</p>
                   <FzInput
                     v-model="foTaskTitle"
                     label="Titolo FO Task"
                     placeholder="Scrivi il titolo del task"
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   >
                     <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
                   </FzInput>
+                  <FzInput
+                    v-model="foTaskIdentifier"
+                    label="Identificativo"
+                    environment="backoffice"
+                    :disabled="true"
+                  />
                   <FzSelect
                     v-model="foTaskQueryTarget"
                     label="Query target"
                     :options="foTaskQueryTargetOptions"
                     filterable
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
+                  <div class="bo-date-row">
+                    <FzDatepicker
+                      v-model="foTaskStartDate"
+                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :disabled="isPublished"
+                    >
+                      <template #helpText>È la data in cui verrà mostrato il task</template>
+                    </FzDatepicker>
+                    <FzDatepicker
+                      v-model="foTaskEndDate"
+                      :min-date="foTaskStartDate ?? undefined"
+                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :disabled="isPublished"
+                    >
+                      <template #helpText>È la data in cui verrà tolto il task</template>
+                    </FzDatepicker>
+                  </div>
                   <FzCheckbox
                     v-model="foTaskHasDeadline"
                     label="Ha una scadenza"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                   <FzDatepicker
                     v-if="foTaskHasDeadline"
                     v-model="foTaskDeadline"
-                    value-format="dd/MM/yyyy"
-                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa' }"
-                    :disabled="isViewingLive"
+                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                    :disabled="isPublished"
                   />
                 </div>
               </div>
@@ -654,7 +617,7 @@ watch(
                     title="Un FO Task esistente"
                     orientation="vertical"
                     :has-radio="false"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                   <FzRadioCard
                     v-model="guideLink"
@@ -664,7 +627,7 @@ watch(
                     title="Un nuovo FO Task"
                     orientation="vertical"
                     :has-radio="false"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </FzRadioGroup>
 
@@ -676,7 +639,7 @@ watch(
                     :options="frontofficeTaskOptions"
                     filterable
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                   <FzSelect
                     v-if="isWelfareDeclarationTask"
@@ -685,48 +648,62 @@ watch(
                     placeholder="Seleziona un anno"
                     :options="taskYearOptions"
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </div>
 
                 <div v-else class="bo-link-detail bo-link-detail--fotask">
-                  <FzInput
-                    v-model="foTaskIdentifier"
-                    label="Identificativo"
-                    placeholder="USER_TAX_DECLARATION"
-                    environment="backoffice"
-                    :disabled="isViewingLive"
-                  >
-                    <template #helpText>Ad esempio: USER_TAX_DECLARATION</template>
-                  </FzInput>
+                  <p class="bo-link-intro">Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.</p>
                   <FzInput
                     v-model="foTaskTitle"
                     label="Titolo FO Task"
                     placeholder="Scrivi il titolo del task"
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   >
                     <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
                   </FzInput>
+                  <FzInput
+                    v-model="foTaskIdentifier"
+                    label="Identificativo"
+                    environment="backoffice"
+                    :disabled="true"
+                  />
                   <FzSelect
                     v-model="foTaskQueryTarget"
                     label="Query target"
                     :options="foTaskQueryTargetOptions"
                     filterable
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
+                  <div class="bo-date-row">
+                    <FzDatepicker
+                      v-model="foTaskStartDate"
+                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :disabled="isPublished"
+                    >
+                      <template #helpText>È la data in cui verrà mostrato il task</template>
+                    </FzDatepicker>
+                    <FzDatepicker
+                      v-model="foTaskEndDate"
+                      :min-date="foTaskStartDate ?? undefined"
+                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :disabled="isPublished"
+                    >
+                      <template #helpText>È la data in cui verrà tolto il task</template>
+                    </FzDatepicker>
+                  </div>
                   <FzCheckbox
                     v-model="foTaskHasDeadline"
                     label="Ha una scadenza"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                   <FzDatepicker
                     v-if="foTaskHasDeadline"
                     v-model="foTaskDeadline"
-                    value-format="dd/MM/yyyy"
-                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa' }"
-                    :disabled="isViewingLive"
+                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                    :disabled="isPublished"
                   />
                 </div>
               </div>
@@ -747,7 +724,7 @@ watch(
                     v-model="currentStep.title"
                     placeholder="Scrivi il titolo di questo passaggio"
                     environment="backoffice"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </div>
               </div>
@@ -788,7 +765,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isViewingLive || !!currentStep.alert"
+                    :disabled="isPublished || !!currentStep.alert"
                     @click="addAlert"
                   />
                   <FzButton
@@ -796,7 +773,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isViewingLive || hasExclusiveContent"
+                    :disabled="isPublished || hasExclusiveContent"
                     @click="addImporto"
                   />
                   <FzButton
@@ -804,7 +781,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isViewingLive || hasExclusiveContent"
+                    :disabled="isPublished || hasExclusiveContent"
                     @click="addDocumento"
                   />
                   <FzButton
@@ -812,7 +789,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isViewingLive || hasExclusiveContent"
+                    :disabled="isPublished || hasExclusiveContent"
                     @click="addDomanda"
                   />
                 </div>
@@ -826,7 +803,7 @@ watch(
                     placeholder="Scrivi la descrizione del passaggio…"
                     :rows="6"
                     resize="vertical"
-                    :disabled="isViewingLive"
+                    :disabled="isPublished"
                   />
                 </div>
 
@@ -841,7 +818,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi alert"
-                        :disabled="isViewingLive"
+                        :disabled="isPublished"
                         @click="removeAlert"
                       />
                     </div>
@@ -851,7 +828,7 @@ watch(
                       placeholder="Seleziona il tono"
                       :options="alertToneOptions"
                       environment="backoffice"
-                      :disabled="isViewingLive"
+                      :disabled="isPublished"
                     />
                     <FzSelect
                       v-model="currentStep.alert.position"
@@ -859,21 +836,21 @@ watch(
                       placeholder="Seleziona la posizione"
                       :options="alertPositionOptions"
                       environment="backoffice"
-                      :disabled="isViewingLive"
+                      :disabled="isPublished"
                     />
                     <FzInput
                       v-model="currentStep.alert.title"
                       label="Titolo alert"
                       placeholder="Scrivi il titolo dell'alert"
                       environment="backoffice"
-                      :disabled="isViewingLive"
+                      :disabled="isPublished"
                     />
                     <FzInput
                       v-model="currentStep.alert.text"
                       label="Testo alert"
                       placeholder="Scrivi il testo dell'alert"
                       environment="backoffice"
-                      :disabled="isViewingLive"
+                      :disabled="isPublished"
                     />
                   </div>
                 </template>
@@ -889,7 +866,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi importi"
-                        :disabled="isViewingLive"
+                        :disabled="isPublished"
                         @click="removeImporto(0)"
                       />
                     </div>
@@ -905,7 +882,7 @@ watch(
                           placeholder="Seleziona la fonte"
                           :options="fonteOptions"
                           environment="backoffice"
-                          :disabled="isViewingLive"
+                          :disabled="isPublished"
                         />
                         <div v-if="getFonte(importo.fonte)" class="bo-importo__list">
                           <div
@@ -932,7 +909,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi documento"
-                        :disabled="isViewingLive"
+                        :disabled="isPublished"
                         @click="removeDocumento(0)"
                       />
                     </div>
@@ -943,7 +920,7 @@ watch(
                     >
                       <div class="bo-documento__field">
                         <div class="bo-documento__option">
-                          <FzCheckbox v-model="documento.fornisci" label="Fornisci un documento" :disabled="isViewingLive" />
+                          <FzCheckbox v-model="documento.fornisci" label="Fornisci un documento" :disabled="isPublished" />
                           <FzUpload
                             v-if="documento.fornisci"
                             v-model="documento.files"
@@ -953,7 +930,7 @@ watch(
                           />
                         </div>
                         <div class="bo-documento__option">
-                          <FzCheckbox v-model="documento.richiedi" label="Richiedi un documento" :disabled="isViewingLive" />
+                          <FzCheckbox v-model="documento.richiedi" label="Richiedi un documento" :disabled="isPublished" />
                           <template v-if="documento.richiedi">
                             <div
                               v-for="(richiesta, rIndex) in documento.requests"
@@ -965,21 +942,21 @@ watch(
                                 label="Quale documento vuoi chiedere al cliente?"
                                 placeholder="Scrivi la richiesta per il cliente"
                                 environment="backoffice"
-                                :disabled="isViewingLive"
+                                :disabled="isPublished"
                               />
                               <FzIconButton
                                 iconName="trash"
                                 variant="invisible"
                                 environment="backoffice"
                                 aria-label="Rimuovi richiesta"
-                                :disabled="isViewingLive || documento.requests.length <= 1"
+                                :disabled="isPublished || documento.requests.length <= 1"
                                 @click="removeRichiesta(documento, rIndex)"
                               />
                             </div>
                             <FzButton
                               variant="invisible"
                               environment="backoffice"
-                              :disabled="isViewingLive"
+                              :disabled="isPublished"
                               @click="addRichiesta(documento)"
                             >
                               Aggiungi richiesta
@@ -1002,7 +979,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi domanda"
-                        :disabled="isViewingLive"
+                        :disabled="isPublished"
                         @click="removeDomanda(0)"
                       />
                     </div>
@@ -1018,17 +995,17 @@ watch(
                           placeholder="Seleziona il tipo"
                           :options="domandaTypeOptions"
                           environment="backoffice"
-                          :disabled="isViewingLive"
+                          :disabled="isPublished"
                         />
                         <FzInput
                           v-model="domanda.question"
                           label="Domanda"
                           placeholder="Scrivi la domanda"
                           environment="backoffice"
-                          :disabled="isViewingLive"
+                          :disabled="isPublished"
                         />
-                        <p v-if="domanda.type === 'yesno'" class="bo-domanda__hint">
-                          Le risposte disponibili saranno "Sì" e "No".
+                        <p v-if="domanda.type === 'importi'" class="bo-domanda__hint">
+                          L'utente inserirà una cifra in un campo importo.
                         </p>
                         <div v-else class="bo-domanda__answers">
                           <div
@@ -1040,14 +1017,14 @@ watch(
                               v-model="domanda.answers[aIndex]"
                               :placeholder="`Risposta ${aIndex + 1}`"
                               environment="backoffice"
-                              :disabled="isViewingLive"
+                              :disabled="isPublished"
                             />
                             <FzIconButton
                               iconName="trash"
                               variant="invisible"
                               environment="backoffice"
                               aria-label="Rimuovi risposta"
-                              :disabled="isViewingLive || domanda.answers.length <= 1"
+                              :disabled="isPublished || domanda.answers.length <= 1"
                               @click="removeRisposta(domanda, aIndex)"
                             />
                           </div>
@@ -1056,7 +1033,7 @@ watch(
                             iconName="plus"
                             variant="invisible"
                             environment="backoffice"
-                            :disabled="isViewingLive"
+                            :disabled="isPublished"
                             @click="addRisposta(domanda)"
                           />
                         </div>
@@ -1071,9 +1048,9 @@ watch(
           </div>
 
           <!-- Footer: confirm-to-close checkbox on the last step + delete step -->
-          <div v-if="currentStep" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isViewingLive }">
+          <div v-if="currentStep" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isPublished }">
             <div v-if="isLastStep" class="bo-editor__footer-check">
-              <FzCheckbox v-model="confirmToClose" label="Chiedi la conferma per chiudere il task" :disabled="isViewingLive" />
+              <FzCheckbox v-model="confirmToClose" label="Chiedi la conferma per chiudere il task" :disabled="isPublished" />
             </div>
             <FzButton
               v-if="steps.length > 1"
@@ -1081,7 +1058,7 @@ watch(
               iconName="trash"
               variant="danger"
               environment="backoffice"
-              :disabled="isViewingLive"
+              :disabled="isPublished"
               @click="removeStep"
             />
           </div>
@@ -1240,8 +1217,8 @@ watch(
                         :key="dIndex"
                         class="bo-phone__domanda"
                       >
-                        <p class="bo-phone__domanda-question">
-                          {{ domanda.question || 'La tua domanda' }}
+                        <p v-if="domanda.question" class="bo-phone__domanda-question">
+                          {{ domanda.question }}
                         </p>
                         <!-- Single choice -->
                         <template v-if="domanda.type === 'single'">
@@ -1269,23 +1246,13 @@ watch(
                             variant="horizontal"
                           />
                         </template>
-                        <!-- Yes / No -->
-                        <template v-else>
-                          <FzRadioCard
-                            v-model="previewSingle[dIndex]"
-                            :name="`preview-domanda-${dIndex}`"
-                            value="yes"
-                            label="yes"
-                            title="Sì"
-                            orientation="horizontal"
-                          />
-                          <FzRadioCard
-                            v-model="previewSingle[dIndex]"
-                            :name="`preview-domanda-${dIndex}`"
-                            value="no"
-                            label="no"
-                            title="No"
-                            orientation="horizontal"
+                        <!-- Importi -->
+                        <template v-else-if="domanda.type === 'importi'">
+                          <FzInput
+                            v-model="previewImporto[dIndex]"
+                            type="number"
+                            placeholder="€ 0,00"
+                            environment="frontoffice"
                           />
                         </template>
                       </div>
@@ -1435,10 +1402,25 @@ watch(
 .bo-link-detail {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
+}
+.bo-link-intro {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  color: #2c282f;
 }
 .bo-link-detail--fotask {
   gap: 24px;
+}
+.bo-date-row {
+  display: flex;
+  gap: 16px;
+}
+.bo-date-row > * {
+  flex: 1 1 0;
+  min-width: 0;
 }
 .bo-steps :deep(label p) {
   font-weight: 600;
@@ -1832,7 +1814,7 @@ watch(
 .bo-phone__domanda-question {
   margin: 0;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 24px;
   color: #2c282f;
 }

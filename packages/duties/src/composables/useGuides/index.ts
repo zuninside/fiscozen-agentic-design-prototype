@@ -26,10 +26,10 @@ export interface GuideStepDocumento {
   files: File[]
 }
 
-export type GuideStepDomandaType = 'single' | 'multiple' | 'yesno'
+export type GuideStepDomandaType = 'single' | 'multiple' | 'importi'
 
 /** A question shown to the user in the guide step. `answers` is ignored for the
- *  `yesno` type (its options are always "Sì" / "No"). */
+ *  `importi` type (the user enters a numeric amount instead of picking an answer). */
 export interface GuideStepDomanda {
   type: GuideStepDomandaType
   question: string
@@ -59,19 +59,6 @@ export const guideTemaOptions = [
   { value: 'servizio-extra', label: 'Servizio Extra' }
 ]
 
-/** Snapshot of the editable content of a guide. Used to keep the published
- *  ("Live") version separate from the working ("Bozza") draft once a guide has
- *  been published and then edited. */
-export interface GuideVersion {
-  title: string
-  area: string
-  productArea?: string | number
-  tema?: string | number
-  frontofficeTask?: string | number
-  taskYear?: string | number
-  steps: GuideStep[]
-}
-
 export interface Guide {
   id: number
   title: string
@@ -86,13 +73,6 @@ export interface Guide {
   taskYear?: string | number
   projectId?: number
   steps: GuideStep[]
-  /** Snapshot of the currently-published (Live) content. Present once the guide
-   *  has been published at least once. The top-level fields hold the working
-   *  (Bozza) content, which may diverge from this snapshot after edits. */
-  published?: GuideVersion
-  /** True when the working draft has diverged from the published snapshot
-   *  (guide was published, then edited & saved as draft). */
-  hasDraftChanges?: boolean
 }
 
 export type GuideDraft = {
@@ -111,22 +91,8 @@ const guides = ref<Guide[]>([])
 const formatDate = (date: Date) =>
   date.toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric' })
 
-/** Snapshot the editable content of a draft into a standalone version object. */
-const snapshotVersion = (data: GuideDraft): GuideVersion => ({
-  title: data.title,
-  area: data.area,
-  productArea: data.productArea,
-  tema: data.tema,
-  frontofficeTask: data.frontofficeTask,
-  taskYear: data.taskYear,
-  steps: data.steps.map((s) => ({ ...s }))
-})
-
 export function useGuides() {
   const getGuide = (id: number) => guides.value.find((g) => g.id === id)
-
-  /** The published ("Live") snapshot of a guide, if any. */
-  const getLiveVersion = (id: number) => getGuide(id)?.published
 
   const addGuide = (data: GuideDraft, status: GuideStatus = 'draft') => {
     const id = guides.value.length ? Math.max(...guides.value.map((g) => g.id)) + 1 : 1
@@ -144,9 +110,7 @@ export function useGuides() {
       author: 'Tu',
       status,
       updatedAt: today,
-      modified: today,
-      published: status === 'published' ? snapshotVersion(data) : undefined,
-      hasDraftChanges: false
+      modified: today
     })
     return id
   }
@@ -155,7 +119,6 @@ export function useGuides() {
     const guide = getGuide(id)
     if (!guide) return
     const today = formatDate(new Date())
-    // Working (Bozza) content always reflects the latest edit.
     guide.title = data.title
     guide.area = data.area
     guide.productArea = data.productArea
@@ -165,22 +128,8 @@ export function useGuides() {
     if (data.projectId !== undefined) guide.projectId = data.projectId
     guide.steps = data.steps
     guide.modified = today
-
-    if (status === 'published') {
-      // Publishing (or re-publishing) promotes the working content to Live.
-      guide.status = 'published'
-      guide.published = snapshotVersion(data)
-      guide.hasDraftChanges = false
-    } else if (guide.published) {
-      // Saving a draft on an already-published guide keeps the Live snapshot
-      // intact and records that a divergent Bozza now exists.
-      guide.status = 'published'
-      guide.hasDraftChanges = true
-    } else {
-      // Never-published guide: plain draft save.
-      guide.status = 'draft'
-      guide.hasDraftChanges = false
-    }
+    // Once published a guide is read-only, so this only ever runs for drafts.
+    guide.status = status
   }
 
   const deleteGuide = (id: number) => {
@@ -206,5 +155,5 @@ export function useGuides() {
     return newId
   }
 
-  return { guides, getGuide, getLiveVersion, addGuide, updateGuide, deleteGuide, duplicateGuide }
+  return { guides, getGuide, addGuide, updateGuide, deleteGuide, duplicateGuide }
 }
