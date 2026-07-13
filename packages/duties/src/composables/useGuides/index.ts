@@ -49,6 +49,21 @@ export interface GuideStep {
 
 export type GuideStatus = 'draft' | 'published'
 
+/** "Punto di partenza": a cosa è collegata la guida (adempimento esistente o
+ *  nuovo FO Task) e la configurazione del task. */
+export interface GuideStartingPoint {
+  variant: 'radio' | 'existing'
+  link: 'adempimento' | 'fotask'
+  adempimento?: string | number
+  foTaskTitle: string
+  foTaskIdentifier: string
+  foTaskQueryTarget?: string | number
+  foTaskStartDate: Date | null
+  foTaskEndDate: Date | null
+  foTaskHasDeadline: boolean
+  foTaskDeadline: Date | null
+}
+
 /** Catalogue of guide themes — used in the editor "Prodotto" section and as a list filter. */
 export const guideTemaOptions = [
   { value: 'dichiarazione', label: 'Dichiarazione dei Redditi' },
@@ -73,6 +88,7 @@ export interface Guide {
   taskYear?: string | number
   projectId?: number
   steps: GuideStep[]
+  startingPoint?: GuideStartingPoint
 }
 
 export type GuideDraft = {
@@ -84,6 +100,7 @@ export type GuideDraft = {
   taskYear?: string | number
   projectId?: number
   steps: GuideStep[]
+  startingPoint?: GuideStartingPoint
 }
 
 const guides = ref<Guide[]>([])
@@ -107,6 +124,7 @@ export function useGuides() {
       taskYear: data.taskYear,
       projectId: data.projectId,
       steps: data.steps,
+      startingPoint: data.startingPoint,
       author: 'Tu',
       status,
       updatedAt: today,
@@ -127,6 +145,7 @@ export function useGuides() {
     guide.taskYear = data.taskYear
     if (data.projectId !== undefined) guide.projectId = data.projectId
     guide.steps = data.steps
+    guide.startingPoint = data.startingPoint
     guide.modified = today
     // Once published a guide is read-only, so this only ever runs for drafts.
     guide.status = status

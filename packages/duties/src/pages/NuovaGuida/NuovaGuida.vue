@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { FzIcon } from '@fiscozen/icons'
 import { FzButton, FzIconButton } from '@fiscozen/button'
+import { FzConfirmDialog } from '@fiscozen/dialog'
 import { FzNavbar } from '@fiscozen/navbar'
 import { FzAvatar } from '@fiscozen/avatar'
 import { FzInput } from '@fiscozen/input'
@@ -25,12 +26,36 @@ const route = useRoute()
 const projectId = computed(() => Number(route.params.projectId))
 const goHome = () =>
   router.push({ name: 'progetto', params: { projectId: String(projectId.value) } })
-const { addGuide, updateGuide, getGuide } = useGuides()
+const { addGuide, updateGuide, getGuide, deleteGuide } = useGuides()
+
+// Conferma di eliminazione della guida (FzConfirmDialog piccolo)
+const deleteDialog = ref<InstanceType<typeof FzConfirmDialog>>()
+const askDeleteGuide = () => deleteDialog.value?.show()
+const confirmDeleteGuide = () => {
+  if (editingId.value) deleteGuide(editingId.value)
+  goHome()
+}
+
+// Uscita con modifiche non salvate (intercetta il tasto "back")
+const unsavedDialog = ref<InstanceType<typeof FzConfirmDialog>>()
+const requestBack = () => {
+  if (isDirty.value) unsavedDialog.value?.show()
+  else goHome()
+}
+const exitWithoutSaving = () => goHome()
+const saveAndExit = () => {
+  persist('draft')
+  goHome()
+}
 
 const editingId = computed(() =>
   route.params.id ? Number(route.params.id) : undefined
 )
-const pageTitle = computed(() => (editingId.value ? 'Modifica guida' : 'Nuova guida'))
+// In modifica mostra il titolo della guida (fallback finché non ne ha uno)
+const pageTitle = computed(() => {
+  if (!editingId.value) return 'Nuova guida'
+  return guideName.value.trim() || 'Guida senza titolo'
+})
 const isPublished = computed(
   () => !!editingId.value && getGuide(editingId.value)?.status === 'published'
 )
@@ -159,14 +184,19 @@ const foTaskQueryTargetOptions = [
 ]
 const foTaskStartDate = ref<Date | null>(null)
 const foTaskEndDate = ref<Date | null>(null)
-// La data di fine non può essere antecedente a quella di inizio
-watch(foTaskStartDate, (start) => {
-  if (start && foTaskEndDate.value && foTaskEndDate.value < start) {
-    foTaskEndDate.value = null
-  }
-})
 const foTaskHasDeadline = ref(false)
 const foTaskDeadline = ref<Date | null>(null)
+// Vincoli temporali del FO Task: la fine non può precedere l'inizio e la
+// scadenza deve cadere tra inizio e fine (mai prima né dopo).
+watch([foTaskStartDate, foTaskEndDate], ([start, end]) => {
+  if (start && end && end < start) {
+    foTaskEndDate.value = null
+  }
+  const deadline = foTaskDeadline.value
+  if (deadline && ((start && deadline < start) || (end && deadline > end))) {
+    foTaskDeadline.value = null
+  }
+})
 
 const addStep = () => {
   const id = steps.value.length ? Math.max(...steps.value.map((s) => s.id)) + 1 : 1
@@ -184,6 +214,30 @@ const mapSteps = (src: GuideStep[]): GuideStep[] =>
     domande: s.domande ?? []
   }))
 
+// Rilevamento modifiche non salvate: snapshot (JSON) dei campi persistiti
+// confrontato con lo stato corrente. I File nei passaggi diventano {} in JSON,
+// ma aggiunte/rimozioni sono comunque rilevate dalla lunghezza degli array.
+const serializeState = () =>
+  JSON.stringify({
+    title: guideName.value,
+    tema: tema.value,
+    frontofficeTask: frontofficeTask.value,
+    taskYear: taskYear.value,
+    settingsVariant: settingsVariant.value,
+    guideLink: guideLink.value,
+    adempimento: adempimento.value,
+    foTaskTitle: foTaskTitle.value,
+    foTaskIdentifier: foTaskIdentifier.value,
+    foTaskQueryTarget: foTaskQueryTarget.value,
+    foTaskStartDate: foTaskStartDate.value,
+    foTaskEndDate: foTaskEndDate.value,
+    foTaskHasDeadline: foTaskHasDeadline.value,
+    foTaskDeadline: foTaskDeadline.value,
+    steps: steps.value
+  })
+const savedState = ref('')
+const isDirty = computed(() => serializeState() !== savedState.value)
+
 if (editingId.value) {
   const guide = getGuide(editingId.value)
   if (guide) {
@@ -192,10 +246,25 @@ if (editingId.value) {
     frontofficeTask.value = guide.frontofficeTask
     taskYear.value = guide.taskYear
     steps.value = mapSteps(guide.steps)
+    const sp = guide.startingPoint
+    if (sp) {
+      settingsVariant.value = sp.variant
+      guideLink.value = sp.link
+      adempimento.value = sp.adempimento
+      foTaskTitle.value = sp.foTaskTitle
+      foTaskIdentifier.value = sp.foTaskIdentifier
+      foTaskQueryTarget.value = sp.foTaskQueryTarget
+      foTaskStartDate.value = sp.foTaskStartDate
+      foTaskEndDate.value = sp.foTaskEndDate
+      foTaskHasDeadline.value = sp.foTaskHasDeadline
+      foTaskDeadline.value = sp.foTaskDeadline
+    }
   }
 } else {
   steps.value.push({ id: 1, title: '', description: '', media: [], alert: null, importi: [], documenti: [], domande: [] })
 }
+// Baseline dopo il caricamento: da qui in poi qualsiasi modifica è "non salvata".
+savedState.value = serializeState()
 
 // Once a guide is published it becomes read-only: the whole editor is locked
 // (see `isPublished`) so a published guide can no longer be modified.
@@ -307,7 +376,19 @@ const persist = (status: 'draft' | 'published') => {
     frontofficeTask: frontofficeTask.value,
     taskYear: isWelfareDeclarationTask.value ? taskYear.value : undefined,
     projectId: projectId.value,
-    steps: steps.value
+    steps: steps.value,
+    startingPoint: {
+      variant: settingsVariant.value,
+      link: guideLink.value,
+      adempimento: adempimento.value,
+      foTaskTitle: foTaskTitle.value,
+      foTaskIdentifier: foTaskIdentifier.value,
+      foTaskQueryTarget: foTaskQueryTarget.value,
+      foTaskStartDate: foTaskStartDate.value,
+      foTaskEndDate: foTaskEndDate.value,
+      foTaskHasDeadline: foTaskHasDeadline.value,
+      foTaskDeadline: foTaskDeadline.value
+    }
   }
   if (editingId.value) {
     updateGuide(editingId.value, draft, status)
@@ -318,6 +399,8 @@ const persist = (status: 'draft' | 'published') => {
       params: { projectId: String(projectId.value), id: String(id) }
     })
   }
+  // Allineo la baseline: dopo il salvataggio non ci sono più modifiche pendenti.
+  savedState.value = serializeState()
 }
 
 const save = () => {
@@ -351,6 +434,7 @@ const previewTitleByTask: Record<string, string> = {
   SEND_ENPAM_WELFARE_DECLARATION: 'Comunica i tuoi redditi ad ENPAM'
 }
 const previewTitle = computed(() => {
+  if (guideName.value.trim()) return guideName.value.trim()
   const task = frontofficeTask.value
   if (task != null && previewTitleByTask[String(task)]) {
     return previewTitleByTask[String(task)]
@@ -396,6 +480,58 @@ watch(
     <div class="bo-toasts">
       <FzToastQueue :toasts="toastQueue" />
     </div>
+
+    <FzConfirmDialog
+      ref="deleteDialog"
+      size="sm"
+      title="Elimina guida"
+      @fzmodal:confirm="confirmDeleteGuide"
+    >
+      <template #body>
+        <p>
+          Vuoi davvero eliminare la guida
+          <strong>{{ previewTitle }}</strong>? L'azione non può essere annullata.
+        </p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="invisible"
+            environment="backoffice"
+            label="Annulla"
+            @click="deleteDialog?.handleCancel()"
+          />
+          <FzButton
+            variant="danger"
+            environment="backoffice"
+            label="Elimina"
+            @click="deleteDialog?.handleConfirm()"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
+
+    <FzConfirmDialog ref="unsavedDialog" size="sm" title="Modifiche non salvate">
+      <template #body>
+        <p>Hai delle modifiche non salvate. Vuoi salvarle prima di uscire?</p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="invisible"
+            environment="backoffice"
+            label="Esci senza salvare"
+            @click="exitWithoutSaving"
+          />
+          <FzButton
+            variant="primary"
+            environment="backoffice"
+            label="Salva ed esci"
+            @click="saveAndExit"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
     <!-- Left navbar -->
     <FzNavbar variant="vertical" :mobile-breakpoint="0" class="bo-navbar">
       <template #brand-logo>
@@ -420,11 +556,11 @@ watch(
       <!-- Header -->
       <header class="bo-header">
         <div class="bo-header__left">
-          <FzIconButton iconName="chevron-left" variant="invisible" environment="backoffice" aria-label="Indietro" @click="goHome" />
+          <FzIconButton iconName="chevron-left" variant="invisible" environment="backoffice" aria-label="Indietro" @click="requestBack" />
           <h1 class="bo-header__title">{{ pageTitle }}</h1>
         </div>
         <div class="bo-header__actions">
-          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" />
+          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" @click="askDeleteGuide" />
           <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
           <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished" @click="publish" />
         </div>
@@ -484,8 +620,8 @@ watch(
               <div class="bo-section__body">
                 <FzInput
                   v-model="guideName"
-                  label="Nome della guida"
-                  placeholder="Scrivi il nome della guida"
+                  label="Titolo della guida"
+                  placeholder="Scrivi il titolo della guida"
                   environment="backoffice"
                   :disabled="isPublished"
                 />
@@ -588,12 +724,14 @@ watch(
                   </div>
                   <FzCheckbox
                     v-model="foTaskHasDeadline"
-                    label="Ha una scadenza"
+                    label="Questo task ha una scadenza"
                     :disabled="isPublished"
                   />
                   <FzDatepicker
                     v-if="foTaskHasDeadline"
                     v-model="foTaskDeadline"
+                    :min-date="foTaskStartDate ?? undefined"
+                    :max-date="foTaskEndDate ?? undefined"
                     :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
                     :disabled="isPublished"
                   />
@@ -696,12 +834,14 @@ watch(
                   </div>
                   <FzCheckbox
                     v-model="foTaskHasDeadline"
-                    label="Ha una scadenza"
+                    label="Questo task ha una scadenza"
                     :disabled="isPublished"
                   />
                   <FzDatepicker
                     v-if="foTaskHasDeadline"
                     v-model="foTaskDeadline"
+                    :min-date="foTaskStartDate ?? undefined"
+                    :max-date="foTaskEndDate ?? undefined"
                     :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
                     :disabled="isPublished"
                   />
@@ -1404,6 +1544,12 @@ watch(
   flex-direction: column;
   gap: 24px;
 }
+.bo-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+}
 .bo-link-intro {
   margin: 0;
   font-size: 16px;
@@ -1699,12 +1845,11 @@ watch(
   padding: 0 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
 }
 .bo-phone__media {
   flex-shrink: 0;
   height: 180px;
-  margin-bottom: 12px;
   border: 1px solid #e9edf0;
   border-radius: 8px;
   background: #f4f6ff;
@@ -1721,9 +1866,6 @@ watch(
   height: 100%;
   object-fit: cover;
 }
-.bo-phone__confirm {
-  margin-top: 12px;
-}
 .bo-phone__desc {
   margin: 0;
   font-size: 16px;
@@ -1731,9 +1873,6 @@ watch(
   line-height: 24px;
   color: #2c282f;
   white-space: pre-wrap;
-}
-.bo-phone__importi-card {
-  margin-top: 24px;
 }
 .bo-phone__importi {
   display: flex;
@@ -1764,7 +1903,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 24px;
-  margin-top: 12px;
 }
 .bo-phone__documento {
   display: flex;
@@ -1804,7 +1942,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 24px;
-  margin-top: 12px;
 }
 .bo-phone__domanda {
   display: flex;
