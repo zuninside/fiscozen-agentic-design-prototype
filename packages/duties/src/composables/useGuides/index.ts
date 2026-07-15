@@ -52,7 +52,6 @@ export type GuideStatus = 'draft' | 'published'
 /** "Punto di partenza": a cosa è collegata la guida (adempimento esistente o
  *  nuovo FO Task) e la configurazione del task. */
 export interface GuideStartingPoint {
-  variant: 'radio' | 'existing'
   link: 'adempimento' | 'fotask'
   adempimento?: string | number
   foTaskTitle: string

@@ -133,13 +133,6 @@ const taskYearOptions = Array.from({ length: 6 }, (_, i) => {
   return { value: year, label: String(year) }
 })
 
-// Two alternative layouts for the settings "FrontOffice task" area.
-// Switchable from the bottom of the sidebar so the previous version isn't lost.
-const settingsVariant = ref<'radio' | 'existing'>('radio')
-const settingsVariantOptions = [
-  { value: 'radio', label: 'Collegamento (radio)' },
-  { value: 'existing', label: 'FO Task esistente (radio)' }
-]
 const guideLink = ref<'adempimento' | 'fotask'>('adempimento')
 
 // "Un adempimento" branch: pick one of Fiscozen's adempimenti.
@@ -223,7 +216,6 @@ const serializeState = () =>
     tema: tema.value,
     frontofficeTask: frontofficeTask.value,
     taskYear: taskYear.value,
-    settingsVariant: settingsVariant.value,
     guideLink: guideLink.value,
     adempimento: adempimento.value,
     foTaskTitle: foTaskTitle.value,
@@ -248,7 +240,6 @@ if (editingId.value) {
     steps.value = mapSteps(guide.steps)
     const sp = guide.startingPoint
     if (sp) {
-      settingsVariant.value = sp.variant
       guideLink.value = sp.link
       adempimento.value = sp.adempimento
       foTaskTitle.value = sp.foTaskTitle
@@ -378,7 +369,6 @@ const persist = (status: 'draft' | 'published') => {
     projectId: projectId.value,
     steps: steps.value,
     startingPoint: {
-      variant: settingsVariant.value,
       link: guideLink.value,
       adempimento: adempimento.value,
       foTaskTitle: foTaskTitle.value,
@@ -597,14 +587,6 @@ watch(
           <div class="bo-steps__add">
             <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isPublished" @click="addStep" />
           </div>
-          <div class="bo-steps__switch">
-            <FzSelect
-              v-model="settingsVariant"
-              label="Versione impostazioni"
-              :options="settingsVariantOptions"
-              environment="backoffice"
-            />
-          </div>
         </section>
 
         <!-- Column 2: editor -->
@@ -638,7 +620,7 @@ watch(
 
             <hr class="bo-divider" />
 
-            <div v-if="settingsVariant === 'radio'" class="bo-section">
+            <div class="bo-section">
               <div class="bo-section__title">
                 <FzIcon name="arrow-right" size="md" class="bo-section__icon" />
                 <span class="bo-section__heading">Punto di partenza</span>
@@ -651,7 +633,7 @@ watch(
                     name="guide-link"
                     value="adempimento"
                     label="adempimento"
-                    title="Un'attività esistente"
+                    title="Un task esistente"
                     orientation="vertical"
                     :has-radio="false"
                     :disabled="isPublished"
@@ -661,7 +643,7 @@ watch(
                     name="guide-link"
                     value="fotask"
                     label="fotask"
-                    title="Una nuova attività"
+                    title="Un nuovo task"
                     orientation="vertical"
                     :has-radio="false"
                     :disabled="isPublished"
@@ -675,116 +657,6 @@ watch(
                     label="Quale adempimento?"
                     :options="adempimentoOptions"
                     filterable
-                    environment="backoffice"
-                    :disabled="isPublished"
-                  />
-                </div>
-
-                <div v-else class="bo-link-detail bo-link-detail--fotask">
-                  <p class="bo-link-intro">Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.</p>
-                  <FzInput
-                    v-model="foTaskTitle"
-                    label="Titolo FO Task"
-                    placeholder="Scrivi il titolo del task"
-                    environment="backoffice"
-                    :disabled="isPublished"
-                  >
-                    <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
-                  </FzInput>
-                  <FzInput
-                    v-model="foTaskIdentifier"
-                    label="Identificativo"
-                    environment="backoffice"
-                    :disabled="true"
-                  />
-                  <FzSelect
-                    v-model="foTaskQueryTarget"
-                    label="Query target"
-                    :options="foTaskQueryTargetOptions"
-                    filterable
-                    environment="backoffice"
-                    :disabled="isPublished"
-                  />
-                  <div class="bo-date-row">
-                    <FzDatepicker
-                      v-model="foTaskStartDate"
-                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
-                      :disabled="isPublished"
-                    >
-                      <template #helpText>È la data in cui verrà mostrato il task</template>
-                    </FzDatepicker>
-                    <FzDatepicker
-                      v-model="foTaskEndDate"
-                      :min-date="foTaskStartDate ?? undefined"
-                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
-                      :disabled="isPublished"
-                    >
-                      <template #helpText>È la data in cui verrà tolto il task</template>
-                    </FzDatepicker>
-                  </div>
-                  <FzCheckbox
-                    v-model="foTaskHasDeadline"
-                    label="Questo task ha una scadenza"
-                    :disabled="isPublished"
-                  />
-                  <FzDatepicker
-                    v-if="foTaskHasDeadline"
-                    v-model="foTaskDeadline"
-                    :min-date="foTaskStartDate ?? undefined"
-                    :max-date="foTaskEndDate ?? undefined"
-                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
-                    :disabled="isPublished"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div v-else-if="settingsVariant === 'existing'" class="bo-section">
-              <div class="bo-section__title">
-                <FzIcon name="arrow-right" size="md" class="bo-section__icon" />
-                <span class="bo-section__heading">Punto di partenza</span>
-              </div>
-              <div class="bo-section__body">
-                <p class="bo-section__desc">A cosa vuoi collegare questa guida?</p>
-                <FzRadioGroup variant="horizontal" name="guide-link" class="bo-link-group">
-                  <FzRadioCard
-                    v-model="guideLink"
-                    name="guide-link"
-                    value="adempimento"
-                    label="adempimento"
-                    title="Un FO Task esistente"
-                    orientation="vertical"
-                    :has-radio="false"
-                    :disabled="isPublished"
-                  />
-                  <FzRadioCard
-                    v-model="guideLink"
-                    name="guide-link"
-                    value="fotask"
-                    label="fotask"
-                    title="Un nuovo FO Task"
-                    orientation="vertical"
-                    :has-radio="false"
-                    :disabled="isPublished"
-                  />
-                </FzRadioGroup>
-
-                <div v-if="guideLink === 'adempimento'" class="bo-link-detail">
-                  <FzSelect
-                    v-model="frontofficeTask"
-                    label="Quale FO Task?"
-                    placeholder="Seleziona un task"
-                    :options="frontofficeTaskOptions"
-                    filterable
-                    environment="backoffice"
-                    :disabled="isPublished"
-                  />
-                  <FzSelect
-                    v-if="isWelfareDeclarationTask"
-                    v-model="taskYear"
-                    label="Anno"
-                    placeholder="Seleziona un anno"
-                    :options="taskYearOptions"
                     environment="backoffice"
                     :disabled="isPublished"
                   />
@@ -1521,10 +1393,6 @@ watch(
 .bo-steps__add {
   align-self: center;
   margin-top: 8px;
-}
-.bo-steps__switch {
-  margin-top: auto;
-  padding-top: 16px;
 }
 .bo-link-group :deep([role='radiogroup']) > * {
   flex: 1 1 0;
