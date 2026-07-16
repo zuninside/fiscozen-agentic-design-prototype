@@ -48,6 +48,22 @@ const saveAndExit = () => {
   goHome()
 }
 
+// Conferma di pubblicazione: dopo la pubblicazione la guida non è più modificabile
+const publishDialog = ref<InstanceType<typeof FzConfirmDialog>>()
+const askPublish = () => {
+  const invalid = firstInvalidLocation()
+  if (invalid) {
+    showErrors.value = true
+    selection.value = invalid
+    enqueueToast(
+      { type: 'error', message: 'Compila tutti i campi obbligatori prima di pubblicare' },
+      toastQueue
+    )
+    return
+  }
+  publishDialog.value?.show()
+}
+
 const editingId = computed(() =>
   route.params.id ? Number(route.params.id) : undefined
 )
@@ -190,6 +206,68 @@ watch([foTaskStartDate, foTaskEndDate], ([start, end]) => {
     foTaskDeadline.value = null
   }
 })
+
+// --- Campi obbligatori -------------------------------------------------------
+// Gli errori vengono mostrati solo dopo un tentativo di pubblicazione.
+const showErrors = ref(false)
+const isBlank = (v: unknown) =>
+  v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
+
+const settingsFieldErrors = computed(() => ({
+  guideName: isBlank(guideName.value),
+  tema: isBlank(tema.value),
+  adempimento: guideLink.value === 'adempimento' && isBlank(adempimento.value),
+  foTaskTitle: guideLink.value === 'fotask' && isBlank(foTaskTitle.value),
+  foTaskQueryTarget: guideLink.value === 'fotask' && isBlank(foTaskQueryTarget.value),
+  foTaskStartDate: guideLink.value === 'fotask' && !foTaskStartDate.value,
+  foTaskEndDate: guideLink.value === 'fotask' && !foTaskEndDate.value,
+  foTaskDeadline: guideLink.value === 'fotask' && foTaskHasDeadline.value && !foTaskDeadline.value
+}))
+const settingsHasErrors = computed(() =>
+  Object.values(settingsFieldErrors.value).some(Boolean)
+)
+
+const stepFieldErrors = (step: GuideStep) => ({
+  title: steps.value.length > 1 && isBlank(step.title),
+  description: isBlank(step.description),
+  alert: step.alert
+    ? { title: isBlank(step.alert.title), text: isBlank(step.alert.text) }
+    : null,
+  importi: step.importi.map((i) => isBlank(i.fonte)),
+  documenti: step.documenti.map((d) => ({
+    files: d.fornisci && d.files.length === 0,
+    requests: d.richiedi ? d.requests.map((r) => isBlank(r)) : []
+  })),
+  domande: step.domande.map((q) => ({
+    question: isBlank(q.question),
+    answers: q.type === 'importi' ? [] : q.answers.map((a) => isBlank(a))
+  }))
+})
+const stepHasErrors = (step: GuideStep) => {
+  const e = stepFieldErrors(step)
+  return [
+    e.title,
+    e.description,
+    ...(e.alert ? [e.alert.title, e.alert.text] : []),
+    ...e.importi,
+    ...e.documenti.flatMap((d) => [d.files, ...d.requests]),
+    ...e.domande.flatMap((q) => [q.question, ...q.answers])
+  ].some(Boolean)
+}
+// Errori dello step attualmente visibile (per i binding :error nel template)
+const currentStepErrors = computed(() =>
+  currentStep.value ? stepFieldErrors(currentStep.value) : null
+)
+// Prima posizione con errori (Impostazioni o uno step), o null se tutto ok
+const firstInvalidLocation = () => {
+  if (settingsHasErrors.value) return 'settings'
+  const bad = steps.value.find((s) => stepHasErrors(s))
+  return bad ? `step-${bad.id}` : null
+}
+// La guida è pubblicabile solo se tutti i campi obbligatori sono compilati
+const isGuideValid = computed(
+  () => !settingsHasErrors.value && !steps.value.some((s) => stepHasErrors(s))
+)
 
 const addStep = () => {
   const id = steps.value.length ? Math.max(...steps.value.map((s) => s.id)) + 1 : 1
@@ -479,8 +557,7 @@ watch(
     >
       <template #body>
         <p>
-          Vuoi davvero eliminare la guida
-          <strong>{{ previewTitle }}</strong>? L'azione non può essere annullata.
+          Una volta eliminata, non sarà più possibile recuperare questa guida.
         </p>
       </template>
       <template #footer>
@@ -501,9 +578,33 @@ watch(
       </template>
     </FzConfirmDialog>
 
+    <FzConfirmDialog ref="publishDialog" size="sm" title="Pubblica guida" @fzmodal:confirm="publish">
+      <template #body>
+        <p>
+          Una volta pubblicata, la guida <strong>non sarà più modificabile</strong>.
+        </p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="invisible"
+            environment="backoffice"
+            label="Annulla"
+            @click="publishDialog?.handleCancel()"
+          />
+          <FzButton
+            variant="primary"
+            environment="backoffice"
+            label="Pubblica"
+            @click="publishDialog?.handleConfirm()"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
+
     <FzConfirmDialog ref="unsavedDialog" size="sm" title="Modifiche non salvate">
       <template #body>
-        <p>Hai delle modifiche non salvate. Vuoi salvarle prima di uscire?</p>
+        <p>Prima di uscire, vuoi salvare le modifiche che hai appena fatto?</p>
       </template>
       <template #footer>
         <div class="bo-dialog-footer">
@@ -552,7 +653,7 @@ watch(
         <div class="bo-header__actions">
           <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" @click="askDeleteGuide" />
           <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
-          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished" @click="publish" />
+          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished || !isGuideValid" @click="askPublish" />
         </div>
       </header>
 
@@ -605,6 +706,7 @@ watch(
                   label="Titolo della guida"
                   placeholder="Scrivi il titolo della guida"
                   environment="backoffice"
+                  :error="showErrors && settingsFieldErrors.guideName"
                   :disabled="isPublished"
                 />
                 <FzSelect
@@ -613,6 +715,7 @@ watch(
                   placeholder="Seleziona un tema"
                   :options="guideTemaOptions"
                   environment="backoffice"
+                  :error="showErrors && settingsFieldErrors.tema"
                   :disabled="isPublished"
                 />
               </div>
@@ -658,6 +761,7 @@ watch(
                     :options="adempimentoOptions"
                     filterable
                     environment="backoffice"
+                    :error="showErrors && settingsFieldErrors.adempimento"
                     :disabled="isPublished"
                   />
                 </div>
@@ -669,6 +773,7 @@ watch(
                     label="Titolo FO Task"
                     placeholder="Scrivi il titolo del task"
                     environment="backoffice"
+                    :error="showErrors && settingsFieldErrors.foTaskTitle"
                     :disabled="isPublished"
                   >
                     <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
@@ -685,12 +790,13 @@ watch(
                     :options="foTaskQueryTargetOptions"
                     filterable
                     environment="backoffice"
+                    :error="showErrors && settingsFieldErrors.foTaskQueryTarget"
                     :disabled="isPublished"
                   />
                   <div class="bo-date-row">
                     <FzDatepicker
                       v-model="foTaskStartDate"
-                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskStartDate }"
                       :disabled="isPublished"
                     >
                       <template #helpText>È la data in cui verrà mostrato il task</template>
@@ -698,7 +804,7 @@ watch(
                     <FzDatepicker
                       v-model="foTaskEndDate"
                       :min-date="foTaskStartDate ?? undefined"
-                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskEndDate }"
                       :disabled="isPublished"
                     >
                       <template #helpText>È la data in cui verrà tolto il task</template>
@@ -714,7 +820,7 @@ watch(
                     v-model="foTaskDeadline"
                     :min-date="foTaskStartDate ?? undefined"
                     :max-date="foTaskEndDate ?? undefined"
-                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskDeadline }"
                     :disabled="isPublished"
                   />
                 </div>
@@ -736,6 +842,7 @@ watch(
                     v-model="currentStep.title"
                     placeholder="Scrivi il titolo di questo passaggio"
                     environment="backoffice"
+                    :error="showErrors && !!currentStepErrors?.title"
                     :disabled="isPublished"
                   />
                 </div>
@@ -815,6 +922,7 @@ watch(
                     placeholder="Scrivi la descrizione del passaggio…"
                     :rows="6"
                     resize="vertical"
+                    :error="showErrors && !!currentStepErrors?.description"
                     :disabled="isPublished"
                   />
                 </div>
@@ -855,6 +963,7 @@ watch(
                       label="Titolo alert"
                       placeholder="Scrivi il titolo dell'alert"
                       environment="backoffice"
+                      :error="showErrors && !!currentStepErrors?.alert?.title"
                       :disabled="isPublished"
                     />
                     <FzInput
@@ -862,6 +971,7 @@ watch(
                       label="Testo alert"
                       placeholder="Scrivi il testo dell'alert"
                       environment="backoffice"
+                      :error="showErrors && !!currentStepErrors?.alert?.text"
                       :disabled="isPublished"
                     />
                   </div>
@@ -893,6 +1003,7 @@ watch(
                           label="Fonte dei calcoli"
                           placeholder="Seleziona la fonte"
                           :options="fonteOptions"
+                          :error="showErrors && !!currentStepErrors?.importi[index]"
                           environment="backoffice"
                           :disabled="isPublished"
                         />
@@ -954,6 +1065,7 @@ watch(
                                 label="Quale documento vuoi chiedere al cliente?"
                                 placeholder="Scrivi la richiesta per il cliente"
                                 environment="backoffice"
+                                :error="showErrors && !!currentStepErrors?.documenti[index]?.requests[rIndex]"
                                 :disabled="isPublished"
                               />
                               <FzIconButton
@@ -1014,6 +1126,7 @@ watch(
                           label="Domanda"
                           placeholder="Scrivi la domanda"
                           environment="backoffice"
+                          :error="showErrors && !!currentStepErrors?.domande[index]?.question"
                           :disabled="isPublished"
                         />
                         <p v-if="domanda.type === 'importi'" class="bo-domanda__hint">
@@ -1029,6 +1142,7 @@ watch(
                               v-model="domanda.answers[aIndex]"
                               :placeholder="`Risposta ${aIndex + 1}`"
                               environment="backoffice"
+                              :error="showErrors && !!currentStepErrors?.domande[index]?.answers[aIndex]"
                               :disabled="isPublished"
                             />
                             <FzIconButton
