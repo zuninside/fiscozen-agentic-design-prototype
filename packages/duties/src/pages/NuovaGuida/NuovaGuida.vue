@@ -90,8 +90,6 @@ const isLastStep = computed(() => {
   return !!currentStep.value && !!last && currentStep.value.id === last.id
 })
 
-const confirmToClose = ref(false)
-const confirmSelection = ref<(string | number)[]>([])
 
 const guideName = ref('')
 
@@ -651,7 +649,7 @@ watch(
           <h1 class="bo-header__title">{{ pageTitle }}</h1>
         </div>
         <div class="bo-header__actions">
-          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" @click="askDeleteGuide" />
+          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" :disabled="isPublished" @click="askDeleteGuide" />
           <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
           <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished || !isGuideValid" @click="askPublish" />
         </div>
@@ -1173,11 +1171,8 @@ watch(
           </template>
           </div>
 
-          <!-- Footer: confirm-to-close checkbox on the last step + delete step -->
-          <div v-if="currentStep" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isPublished }">
-            <div v-if="isLastStep" class="bo-editor__footer-check">
-              <FzCheckbox v-model="confirmToClose" label="Chiedi la conferma per chiudere il task" :disabled="isPublished" />
-            </div>
+          <!-- Footer: delete step (solo con più di uno step) -->
+          <div v-if="currentStep && steps.length > 1" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isPublished }">
             <FzButton
               v-if="steps.length > 1"
               label="Elimina passaggio"
@@ -1382,19 +1377,6 @@ watch(
                           />
                         </template>
                       </div>
-                    </div>
-                    <!-- Confirm-to-close radiocard on the last step -->
-                    <div v-if="confirmToClose && previewIsLastStep" class="bo-phone__confirm">
-                      <FzCheckboxCard
-                        v-model="confirmSelection"
-                        name="guide-confirm-close"
-                        value="done"
-                        label="done"
-                        title="Premi qui per confermare che hai fatto"
-                        subtitle="E poter chiudere l'attività"
-                        variant="horizontal"
-                        :has-checkbox="false"
-                      />
                     </div>
                   </div>
                   <!-- Footer -->
@@ -1648,9 +1630,6 @@ watch(
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-}
-.bo-editor__footer-check {
-  margin-right: auto;
 }
 .bo-importo {
   display: flex;

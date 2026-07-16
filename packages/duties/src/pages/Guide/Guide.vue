@@ -77,13 +77,14 @@ const filteredGuides = computed({
   set() {}
 })
 
-const rowActions = {
+// Actions are computed per-row so "Elimina" can be disabled on published guides
+const rowActions = (guide: Guide) => ({
   items: [
     { type: 'action' as const, label: 'Apri' },
     { type: 'action' as const, label: 'Duplica' },
-    { type: 'action' as const, label: 'Elimina' }
+    { type: 'action' as const, label: 'Elimina', disabled: guide.status === 'published' }
   ]
-}
+})
 
 const goToProjects = () => router.push({ name: 'progetti' })
 const openEditor = () =>
@@ -116,7 +117,7 @@ const onRowAction = (
   if (!rowData) return
   if (action.label === 'Apri') editGuide(rowData)
   else if (action.label === 'Duplica') duplicateGuide(rowData.id)
-  else if (action.label === 'Elimina') askDeleteGuide(rowData)
+  else if (action.label === 'Elimina' && rowData.status !== 'published') askDeleteGuide(rowData)
 }
 </script>
 
