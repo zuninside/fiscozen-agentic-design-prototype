@@ -55,23 +55,12 @@ export interface GuideStartingPoint {
   link: 'adempimento' | 'fotask'
   adempimento?: string | number
   foTaskTitle: string
-  foTaskIdentifier: string
   foTaskQueryTarget?: string | number
   foTaskStartDate: Date | null
   foTaskEndDate: Date | null
   foTaskHasDeadline: boolean
   foTaskDeadline: Date | null
 }
-
-/** Catalogue of guide themes — used in the editor "Prodotto" section and as a list filter. */
-export const guideTemaOptions = [
-  { value: 'dichiarazione', label: 'Dichiarazione dei Redditi' },
-  { value: 'tasse', label: 'Tasse' },
-  { value: 'fatture', label: 'Fatture' },
-  { value: 'adempimenti', label: 'Adempimenti' },
-  { value: 'onboarding', label: 'Onboarding' },
-  { value: 'servizio-extra', label: 'Servizio Extra' }
-]
 
 export interface Guide {
   id: number
@@ -82,7 +71,6 @@ export interface Guide {
   author: string
   status: GuideStatus
   productArea?: string | number
-  tema?: string | number
   frontofficeTask?: string | number
   taskYear?: string | number
   projectId?: number
@@ -94,7 +82,6 @@ export type GuideDraft = {
   title: string
   area: string
   productArea?: string | number
-  tema?: string | number
   frontofficeTask?: string | number
   taskYear?: string | number
   projectId?: number
@@ -118,7 +105,6 @@ export function useGuides() {
       title: data.title,
       area: data.area,
       productArea: data.productArea,
-      tema: data.tema,
       frontofficeTask: data.frontofficeTask,
       taskYear: data.taskYear,
       projectId: data.projectId,
@@ -139,7 +125,6 @@ export function useGuides() {
     guide.title = data.title
     guide.area = data.area
     guide.productArea = data.productArea
-    guide.tema = data.tema
     guide.frontofficeTask = data.frontofficeTask
     guide.taskYear = data.taskYear
     if (data.projectId !== undefined) guide.projectId = data.projectId

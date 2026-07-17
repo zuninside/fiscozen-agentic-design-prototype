@@ -12,15 +12,18 @@ import { FzTable } from '@fiscozen/table'
 import { FzColumn } from '@fiscozen/simple-table'
 import { FzConfirmDialog } from '@fiscozen/dialog'
 import { FzDivider } from '@fiscozen/divider'
-import { useGuides, guideTemaOptions, type Guide } from '../../composables/useGuides'
+import { FzCard } from '@fiscozen/card'
+import { useGuides, type Guide } from '../../composables/useGuides'
 import { useProjects } from '../../composables/useProjects'
 
 const router = useRouter()
 const route = useRoute()
 
 const projectId = computed(() => Number(route.params.projectId))
-const { getProject } = useProjects()
+const { getProject, projectTemaOptions } = useProjects()
 const project = computed(() => getProject(projectId.value))
+const temaLabel = (value?: string | number) =>
+  projectTemaOptions.value.find((o) => o.value === value)?.label ?? '—'
 
 const search = ref('')
 
@@ -31,10 +34,6 @@ const sortOptions = [
   { value: 'title', label: 'Titolo (A-Z)' }
 ]
 
-const tema = ref<string | number | undefined>('all')
-const temaOptions = [{ value: 'all', label: 'Tutti' }, ...guideTemaOptions]
-const temaLabel = (value?: string | number) =>
-  guideTemaOptions.find((o) => o.value === value)?.label ?? '—'
 
 const annualita = ref<string | number | undefined>('all')
 
@@ -60,10 +59,9 @@ const filteredGuides = computed({
     const query = search.value.trim().toLowerCase()
     let list = guides.value.filter((g) => {
       const projectOk = g.projectId === projectId.value
-      const temaOk = tema.value === 'all' || g.tema === tema.value
       const annoOk = annualita.value === 'all' || g.taskYear === annualita.value
       const searchOk = !query || g.title.toLowerCase().includes(query)
-      return projectOk && temaOk && annoOk && searchOk
+      return projectOk && annoOk && searchOk
     })
     if (sortBy.value === 'title') {
       list = [...list].sort((a, b) => a.title.localeCompare(b.title))
@@ -184,12 +182,6 @@ const onRowAction = (
             environment="backoffice"
           />
           <FzSelect
-            v-model="tema"
-            label="Tema"
-            :options="temaOptions"
-            environment="backoffice"
-          />
-          <FzSelect
             v-model="annualita"
             label="Annualità"
             :options="annualitaOptions"
@@ -202,6 +194,19 @@ const onRowAction = (
 
         <!-- Content column -->
         <div class="bo-content">
+          <!-- Project info card -->
+          <FzCard
+            v-if="project && (project.tema || project.description)"
+            color="grey"
+            environment="backoffice"
+            class="bo-project-card"
+          >
+            <div class="bo-project-card__body">
+              <p v-if="project.tema" class="bo-project-card__tema">{{ temaLabel(project.tema) }}</p>
+              <p v-if="project.description" class="bo-project-card__desc">{{ project.description }}</p>
+            </div>
+          </FzCard>
+
           <!-- Empty state -->
           <div v-if="!filteredGuides.length" class="bo-empty">
             <p class="bo-empty__text">
@@ -226,11 +231,6 @@ const onRowAction = (
               </template>
             </FzColumn>
             <FzColumn field="modified" header="Modificata il" />
-            <FzColumn field="tema" header="Tema">
-              <template #default="{ data }">
-                {{ temaLabel(data.tema) }}
-              </template>
-            </FzColumn>
             <FzColumn field="author" header="Creata da" />
             <FzColumn field="status" header="Stato">
               <template #default="{ data }">
@@ -400,6 +400,30 @@ const onRowAction = (
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+/* Project info card */
+.bo-project-card {
+  flex-shrink: 0;
+}
+.bo-project-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bo-project-card__tema {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #2c282f;
+}
+.bo-project-card__desc {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  color: #596167;
 }
 
 /* Empty state */

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { FzIcon } from '@fiscozen/icons'
 import { FzButton, FzIconButton } from '@fiscozen/button'
@@ -27,12 +27,25 @@ const sortOptions = [
 
 const railIcons = ['suitcase', 'folder-open', 'credit-card', 'cart-shopping', 'calendar', 'file', 'gear']
 
-const { projects, addProject, updateProject, deleteProject } = useProjects()
+const { projects, addProject, updateProject, deleteProject, projectTemaOptions, addProjectTema } =
+  useProjects()
+
+const temaFilter = ref<string | number | undefined>('all')
+const temaFilterOptions = computed(() => [
+  { value: 'all', label: 'Tutti' },
+  ...projectTemaOptions.value
+])
+const temaLabel = (value?: string | number) =>
+  projectTemaOptions.value.find((o) => o.value === value)?.label ?? '—'
 
 const filteredProjects = computed({
   get() {
     const query = search.value.trim().toLowerCase()
-    let list = projects.value.filter((p) => !query || p.name.toLowerCase().includes(query))
+    let list = projects.value.filter((p) => {
+      const searchOk = !query || p.name.toLowerCase().includes(query)
+      const temaOk = temaFilter.value === 'all' || p.tema === temaFilter.value
+      return searchOk && temaOk
+    })
     if (sortBy.value === 'name') {
       list = [...list].sort((a, b) => a.name.localeCompare(b.name))
     } else if (sortBy.value === 'updated') {
@@ -61,6 +74,23 @@ const editDialog = ref<InstanceType<typeof FzConfirmDialog>>()
 const editingId = ref<number | null>(null)
 const formName = ref('')
 const formDescription = ref('')
+const formTema = ref<string | number | undefined>(undefined)
+// Add-a-new-theme UI inside the dialog
+const showNewTema = ref(false)
+const newTema = ref('')
+const cancelNewTema = () => {
+  showNewTema.value = false
+  newTema.value = ''
+}
+// Aggiungendo un tema a mano, svuota l'eventuale selezione fatta nella select.
+const openNewTema = () => {
+  formTema.value = undefined
+  showNewTema.value = true
+}
+// Selezionando un tema dalla lista, nascondi e svuota il campo "Nuovo tema".
+watch(formTema, (value) => {
+  if (value) cancelNewTema()
+})
 
 const dialogTitle = computed(() =>
   editingId.value ? 'Modifica progetto' : 'Nuovo progetto'
@@ -70,6 +100,9 @@ const openCreate = () => {
   editingId.value = null
   formName.value = ''
   formDescription.value = ''
+  formTema.value = undefined
+  showNewTema.value = false
+  newTema.value = ''
   editDialog.value?.show()
 }
 
@@ -77,13 +110,20 @@ const openEdit = (project: Project) => {
   editingId.value = project.id
   formName.value = project.name
   formDescription.value = project.description ?? ''
+  formTema.value = project.tema
+  showNewTema.value = false
+  newTema.value = ''
   editDialog.value?.show()
 }
 
 const confirmEdit = () => {
+  // A newly typed theme is added to the catalogue and selected for the project.
+  const tema =
+    showNewTema.value && newTema.value.trim() ? addProjectTema(newTema.value) : formTema.value
   const data = {
     name: formName.value.trim() || 'Nuovo progetto',
-    description: formDescription.value.trim() || undefined
+    description: formDescription.value.trim() || undefined,
+    tema
   }
   if (editingId.value) {
     updateProject(editingId.value, data)
@@ -150,7 +190,7 @@ const onRowAction = (
       <div class="bo-content-card">
       <!-- Header -->
       <header class="bo-header">
-        <h1 class="bo-header__title">Guide</h1>
+        <h1 class="bo-header__title">Guide clienti</h1>
         <div class="bo-header__actions">
           <FzButton
             label="Nuovo progetto"
@@ -176,6 +216,12 @@ const onRowAction = (
             v-model="sortBy"
             label="Ordina per"
             :options="sortOptions"
+            environment="backoffice"
+          />
+          <FzSelect
+            v-model="temaFilter"
+            label="Tema"
+            :options="temaFilterOptions"
             environment="backoffice"
           />
         </aside>
@@ -205,6 +251,11 @@ const onRowAction = (
           >
             <FzColumn field="name" header="Nome progetto" />
             <FzColumn field="description" header="Descrizione" />
+            <FzColumn field="tema" header="Tema">
+              <template #default="{ data }">
+                {{ temaLabel(data.tema) }}
+              </template>
+            </FzColumn>
             <FzColumn field="modified" header="Modificato il" />
           </FzTable>
         </div>
@@ -229,6 +280,37 @@ const onRowAction = (
             placeholder="Scrivi il nome del progetto"
             environment="backoffice"
           />
+          <FzSelect
+            v-model="formTema"
+            label="Tema"
+            placeholder="Seleziona un tema"
+            :options="projectTemaOptions"
+            environment="backoffice"
+          />
+          <FzButton
+            v-if="!showNewTema"
+            variant="invisible"
+            size="sm"
+            iconName="plus"
+            environment="backoffice"
+            label="Aggiungi un tema"
+            @click="openNewTema"
+          />
+          <div v-else class="bo-tema-new">
+            <FzInput
+              v-model="newTema"
+              label="Nuovo tema"
+              placeholder="Scrivi il nome del nuovo tema"
+              environment="backoffice"
+            />
+            <FzIconButton
+              iconName="trash"
+              variant="invisible"
+              environment="backoffice"
+              aria-label="Rimuovi nuovo tema"
+              @click="cancelNewTema"
+            />
+          </div>
           <FzTextarea
             v-model="formDescription"
             label="Descrizione"
@@ -424,6 +506,15 @@ const onRowAction = (
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.bo-tema-new {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.bo-tema-new > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 
 /* Dialog footer (backoffice buttons) */

@@ -1,10 +1,27 @@
 import { ref } from 'vue'
 
+export interface TemaOption {
+  value: string | number
+  label: string
+}
+
+/** Catalogue of project themes — reactive so new themes added from the "Nuovo
+ *  progetto" dialog appear everywhere (dialog, list filter, table column). */
+const projectTemaOptions = ref<TemaOption[]>([
+  { value: 'dichiarazione', label: 'Dichiarazione dei Redditi' },
+  { value: 'tasse', label: 'Tasse' },
+  { value: 'fatture', label: 'Fatture' },
+  { value: 'adempimenti', label: 'Adempimenti' },
+  { value: 'onboarding', label: 'Onboarding' },
+  { value: 'servizio-extra', label: 'Servizio Extra' }
+])
+
 export interface Project {
   id: number
   name: string
   description?: string
   area?: string | number
+  tema?: string | number
   createdAt: string
   modified: string
 }
@@ -13,6 +30,7 @@ export type ProjectDraft = {
   name: string
   description?: string
   area?: string | number
+  tema?: string | number
 }
 
 const projects = ref<Project[]>([])
@@ -31,6 +49,7 @@ export function useProjects() {
       name: data.name,
       description: data.description,
       area: data.area,
+      tema: data.tema,
       createdAt: today,
       modified: today
     })
@@ -43,6 +62,7 @@ export function useProjects() {
     project.name = data.name
     project.description = data.description
     project.area = data.area
+    project.tema = data.tema
     project.modified = formatDate(new Date())
   }
 
@@ -51,5 +71,27 @@ export function useProjects() {
     if (index !== -1) projects.value.splice(index, 1)
   }
 
-  return { projects, getProject, addProject, updateProject, deleteProject }
+  /** Add a custom theme to the catalogue (or reuse it if the label already
+   *  exists). Returns the value to assign to the project. */
+  const addProjectTema = (label: string) => {
+    const trimmed = label.trim()
+    if (!trimmed) return undefined
+    const existing = projectTemaOptions.value.find(
+      (o) => o.label.toLowerCase() === trimmed.toLowerCase()
+    )
+    if (existing) return existing.value
+    const value = `custom-${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`
+    projectTemaOptions.value.push({ value, label: trimmed })
+    return value
+  }
+
+  return {
+    projects,
+    getProject,
+    addProject,
+    updateProject,
+    deleteProject,
+    projectTemaOptions,
+    addProjectTema
+  }
 }

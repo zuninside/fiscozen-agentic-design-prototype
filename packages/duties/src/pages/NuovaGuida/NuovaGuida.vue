@@ -18,7 +18,7 @@ import { FzStepper } from '@fiscozen/stepper'
 import { FzAlert } from '@fiscozen/alert'
 import { FzCard } from '@fiscozen/card'
 import { FzToastQueue, enqueueToast, type Toast } from '@fiscozen/toast'
-import { useGuides, guideTemaOptions, type GuideStep, type GuideStepDomanda, type GuideStepDocumento } from '../../composables/useGuides'
+import { useGuides, type GuideStep, type GuideStepDomanda, type GuideStepDocumento } from '../../composables/useGuides'
 import { useImportiCatalog } from '../../composables/useImportiCatalog'
 
 const router = useRouter()
@@ -47,6 +47,9 @@ const saveAndExit = () => {
   persist('draft')
   goHome()
 }
+
+// Dialog informativa sul "Punto di partenza"
+const startInfoDialog = ref<InstanceType<typeof FzConfirmDialog>>()
 
 // Conferma di pubblicazione: dopo la pubblicazione la guida non è più modificabile
 const publishDialog = ref<InstanceType<typeof FzConfirmDialog>>()
@@ -92,8 +95,6 @@ const isLastStep = computed(() => {
 
 
 const guideName = ref('')
-
-const tema = ref<string | number | undefined>(undefined)
 
 const frontofficeTask = ref<string | number | undefined>(undefined)
 const frontofficeTaskOptions = [
@@ -156,29 +157,18 @@ const adempimentoOptions = [
   { value: 'dichiarazione_redditi', label: 'Dichiarazione dei Redditi' },
   { value: 'dichiarazione_iva', label: 'Dichiarazione IVA' },
   { value: 'modello_770', label: 'Modello 770' },
-  { value: 'modello_irap', label: 'Modello IRAP' },
   { value: 'lipe', label: 'Liquidazione periodica IVA (LIPE)' },
-  { value: 'esterometro', label: 'Esterometro' },
   { value: 'intrastat', label: 'Intrastat' },
-  { value: 'comunicazione_reddituale', label: 'Comunicazione Reddituale' },
+  { value: 'comunicazione_reddituale_enpam', label: 'Comunicazione reddituale a ENPAM' },
+  { value: 'comunicazione_reddituale_enpap', label: 'Comunicazione reddituale a ENPAP' },
+  { value: 'comunicazione_reddituale_enpapi', label: 'Comunicazione reddituale a ENPAPI' },
+  { value: 'comunicazione_reddituale_inarcassa', label: 'Comunicazione reddituale a Inarcassa' },
+  { value: 'comunicazione_reddituale_forense', label: 'Comunicazione reddituale a Cassa forense' },
   { value: 'f24', label: 'F24' }
 ]
 
 // "Un nuovo FO Task" branch: define a brand new frontoffice task.
-const foTaskIdentifier = ref('')
 const foTaskTitle = ref('')
-// L'identificativo è sempre in sola lettura e si autocompila dal titolo:
-// MAIUSCOLO, accenti rimossi, ogni sequenza non alfanumerica → underscore.
-const toIdentifier = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-watch(foTaskTitle, (title) => {
-  foTaskIdentifier.value = toIdentifier(title)
-})
 const foTaskQueryTarget = ref<string | number | undefined>()
 const foTaskQueryTargetOptions = [
   { value: 'active_users', label: 'Utenti attivi' },
@@ -205,6 +195,64 @@ watch([foTaskStartDate, foTaskEndDate], ([start, end]) => {
   }
 })
 
+// Collegando la guida a un adempimento/task esistente ne mostriamo i dati del
+// FO Task (mock), precompilati negli stessi campi del nuovo task e modificabili.
+type TaskPreset = {
+  title: string
+  queryTarget: string
+  startDate: Date
+  endDate: Date
+  hasDeadline: boolean
+  deadline: Date | null
+}
+const adempimentoPresets: Record<string, TaskPreset> = {
+  certificazione_unica: { title: 'Invia la Certificazione Unica', queryTarget: 'active_users', startDate: new Date(2026, 0, 7), endDate: new Date(2026, 2, 16), hasDeadline: true, deadline: new Date(2026, 2, 16) },
+  dichiarazione_redditi: { title: 'Compila la Dichiarazione dei Redditi', queryTarget: 'users_with_vat', startDate: new Date(2026, 4, 1), endDate: new Date(2026, 8, 30), hasDeadline: true, deadline: new Date(2026, 8, 30) },
+  dichiarazione_iva: { title: 'Invia la Dichiarazione IVA', queryTarget: 'users_with_vat', startDate: new Date(2026, 1, 1), endDate: new Date(2026, 3, 30), hasDeadline: true, deadline: new Date(2026, 3, 30) },
+  modello_770: { title: 'Invia il Modello 770', queryTarget: 'users_with_vat', startDate: new Date(2026, 8, 1), endDate: new Date(2026, 9, 31), hasDeadline: true, deadline: new Date(2026, 9, 31) },
+  lipe: { title: 'Invia la LIPE', queryTarget: 'users_with_vat', startDate: new Date(2026, 0, 1), endDate: new Date(2026, 1, 28), hasDeadline: true, deadline: new Date(2026, 1, 28) },
+  intrastat: { title: "Invia l'Intrastat", queryTarget: 'users_with_vat', startDate: new Date(2026, 0, 1), endDate: new Date(2026, 0, 25), hasDeadline: true, deadline: new Date(2026, 0, 25) },
+  comunicazione_reddituale_enpam: { title: 'Comunica i tuoi redditi a ENPAM', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  comunicazione_reddituale_enpap: { title: 'Comunica i tuoi redditi a ENPAP', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  comunicazione_reddituale_enpapi: { title: 'Comunica i tuoi redditi a ENPAPI', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  comunicazione_reddituale_inarcassa: { title: 'Comunica i tuoi redditi a Inarcassa', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  comunicazione_reddituale_forense: { title: 'Comunica i tuoi redditi a Cassa forense', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  f24: { title: 'Paga il tuo F24', queryTarget: 'overdue_f24', startDate: new Date(2026, 0, 1), endDate: new Date(2026, 11, 31), hasDeadline: true, deadline: new Date(2026, 5, 16) }
+}
+
+const applyTaskPreset = (preset: TaskPreset | undefined) => {
+  if (!preset) return
+  foTaskTitle.value = preset.title
+  foTaskQueryTarget.value = preset.queryTarget
+  foTaskStartDate.value = preset.startDate
+  foTaskEndDate.value = preset.endDate
+  foTaskHasDeadline.value = preset.hasDeadline
+  foTaskDeadline.value = preset.deadline
+}
+const clearTaskFields = () => {
+  foTaskTitle.value = ''
+  foTaskQueryTarget.value = undefined
+  foTaskStartDate.value = null
+  foTaskEndDate.value = null
+  foTaskHasDeadline.value = false
+  foTaskDeadline.value = null
+}
+// Selezione di un adempimento: carica i dati del task esistente (modificabili).
+const onAdempimentoChange = (value: string | number | undefined) => {
+  if (value === undefined || value === null) clearTaskFields()
+  else applyTaskPreset(adempimentoPresets[String(value)])
+}
+// Cambio opzione: "nuovo task" riparte vuoto, "task esistente" ricarica il preset.
+const onGuideLinkChange = (value: string | number) => {
+  if (value === 'fotask') clearTaskFields()
+  else if (adempimento.value) applyTaskPreset(adempimentoPresets[String(adempimento.value)])
+  else clearTaskFields()
+}
+// I campi del task sono visibili per il nuovo task o per un adempimento scelto.
+const showsTaskFields = computed(
+  () => guideLink.value === 'fotask' || (guideLink.value === 'adempimento' && !!adempimento.value)
+)
+
 // --- Campi obbligatori -------------------------------------------------------
 // Gli errori vengono mostrati solo dopo un tentativo di pubblicazione.
 const showErrors = ref(false)
@@ -213,13 +261,12 @@ const isBlank = (v: unknown) =>
 
 const settingsFieldErrors = computed(() => ({
   guideName: isBlank(guideName.value),
-  tema: isBlank(tema.value),
   adempimento: guideLink.value === 'adempimento' && isBlank(adempimento.value),
-  foTaskTitle: guideLink.value === 'fotask' && isBlank(foTaskTitle.value),
-  foTaskQueryTarget: guideLink.value === 'fotask' && isBlank(foTaskQueryTarget.value),
-  foTaskStartDate: guideLink.value === 'fotask' && !foTaskStartDate.value,
-  foTaskEndDate: guideLink.value === 'fotask' && !foTaskEndDate.value,
-  foTaskDeadline: guideLink.value === 'fotask' && foTaskHasDeadline.value && !foTaskDeadline.value
+  foTaskTitle: showsTaskFields.value && isBlank(foTaskTitle.value),
+  foTaskQueryTarget: showsTaskFields.value && isBlank(foTaskQueryTarget.value),
+  foTaskStartDate: showsTaskFields.value && !foTaskStartDate.value,
+  foTaskEndDate: showsTaskFields.value && !foTaskEndDate.value,
+  foTaskDeadline: showsTaskFields.value && foTaskHasDeadline.value && !foTaskDeadline.value
 }))
 const settingsHasErrors = computed(() =>
   Object.values(settingsFieldErrors.value).some(Boolean)
@@ -289,13 +336,11 @@ const mapSteps = (src: GuideStep[]): GuideStep[] =>
 const serializeState = () =>
   JSON.stringify({
     title: guideName.value,
-    tema: tema.value,
     frontofficeTask: frontofficeTask.value,
     taskYear: taskYear.value,
     guideLink: guideLink.value,
     adempimento: adempimento.value,
     foTaskTitle: foTaskTitle.value,
-    foTaskIdentifier: foTaskIdentifier.value,
     foTaskQueryTarget: foTaskQueryTarget.value,
     foTaskStartDate: foTaskStartDate.value,
     foTaskEndDate: foTaskEndDate.value,
@@ -310,7 +355,6 @@ if (editingId.value) {
   const guide = getGuide(editingId.value)
   if (guide) {
     guideName.value = guide.title
-    tema.value = guide.tema
     frontofficeTask.value = guide.frontofficeTask
     taskYear.value = guide.taskYear
     steps.value = mapSteps(guide.steps)
@@ -319,7 +363,6 @@ if (editingId.value) {
       guideLink.value = sp.link
       adempimento.value = sp.adempimento
       foTaskTitle.value = sp.foTaskTitle
-      foTaskIdentifier.value = sp.foTaskIdentifier
       foTaskQueryTarget.value = sp.foTaskQueryTarget
       foTaskStartDate.value = sp.foTaskStartDate
       foTaskEndDate.value = sp.foTaskEndDate
@@ -439,7 +482,6 @@ const persist = (status: 'draft' | 'published') => {
   const draft = {
     title: guideName.value.trim() || task?.label || 'Nuova guida',
     area: '—',
-    tema: tema.value,
     frontofficeTask: frontofficeTask.value,
     taskYear: isWelfareDeclarationTask.value ? taskYear.value : undefined,
     projectId: projectId.value,
@@ -448,7 +490,6 @@ const persist = (status: 'draft' | 'published') => {
       link: guideLink.value,
       adempimento: adempimento.value,
       foTaskTitle: foTaskTitle.value,
-      foTaskIdentifier: foTaskIdentifier.value,
       foTaskQueryTarget: foTaskQueryTarget.value,
       foTaskStartDate: foTaskStartDate.value,
       foTaskEndDate: foTaskEndDate.value,
@@ -576,6 +617,32 @@ watch(
       </template>
     </FzConfirmDialog>
 
+    <FzConfirmDialog ref="startInfoDialog" size="md" title="Punto di partenza">
+      <template #body>
+        <p>
+          Il <strong>punto di partenza</strong> definisce a cosa è collegata la guida e da
+          dove l'utente potrà aprirla. Puoi collegarla a un <strong>task esistente</strong>
+          (un adempimento o un'attività già presente, come la Dichiarazione dei Redditi o
+          un invito a caricare un documento) oppure creare <strong>un nuovo task</strong>,
+          che comparirà nella dashboard del cliente prima della guida.
+        </p>
+        <p>
+          Sceglierlo è necessario perché determina <strong>dove e quando</strong> la guida
+          verrà mostrata all'utente.
+        </p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="primary"
+            environment="backoffice"
+            label="Ho capito"
+            @click="startInfoDialog?.handleCancel()"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
+
     <FzConfirmDialog ref="publishDialog" size="sm" title="Pubblica guida" @fzmodal:confirm="publish">
       <template #body>
         <p>
@@ -695,36 +762,16 @@ watch(
           <template v-if="isSettings">
             <div class="bo-section">
               <div class="bo-section__title">
-                <FzIcon name="file" size="md" class="bo-section__icon" />
-                <span class="bo-section__heading">Guida</span>
-              </div>
-              <div class="bo-section__body">
-                <FzInput
-                  v-model="guideName"
-                  label="Titolo della guida"
-                  placeholder="Scrivi il titolo della guida"
-                  environment="backoffice"
-                  :error="showErrors && settingsFieldErrors.guideName"
-                  :disabled="isPublished"
-                />
-                <FzSelect
-                  v-model="tema"
-                  label="Tema"
-                  placeholder="Seleziona un tema"
-                  :options="guideTemaOptions"
-                  environment="backoffice"
-                  :error="showErrors && settingsFieldErrors.tema"
-                  :disabled="isPublished"
-                />
-              </div>
-            </div>
-
-            <hr class="bo-divider" />
-
-            <div class="bo-section">
-              <div class="bo-section__title">
                 <FzIcon name="arrow-right" size="md" class="bo-section__icon" />
                 <span class="bo-section__heading">Punto di partenza</span>
+                <FzIconButton
+                  iconName="circle-question"
+                  variant="invisible"
+                  size="sm"
+                  environment="backoffice"
+                  aria-label="Cos'è il punto di partenza?"
+                  @click="startInfoDialog?.show()"
+                />
               </div>
               <div class="bo-section__body">
                 <p class="bo-section__desc">A cosa vuoi collegare questa guida?</p>
@@ -738,6 +785,7 @@ watch(
                     orientation="vertical"
                     :has-radio="false"
                     :disabled="isPublished"
+                    @update:model-value="onGuideLinkChange"
                   />
                   <FzRadioCard
                     v-model="guideLink"
@@ -748,24 +796,28 @@ watch(
                     orientation="vertical"
                     :has-radio="false"
                     :disabled="isPublished"
+                    @update:model-value="onGuideLinkChange"
                   />
                 </FzRadioGroup>
 
                 <div v-if="guideLink === 'adempimento'" class="bo-link-detail">
-                  <p class="bo-link-intro">La guida verrà associata all'adempimento che sceglierai qui di seguito.<br />Ad esempio: Certificazione Unica, Dichiarazione dei Redditi, Dichiarazione IVA, 770.</p>
+                  <p class="bo-link-intro">La guida verrà associata all'adempimento o al task che scegli.<br />Ad esempio: Comunicazioni reddituali, Certificazione Unica, Dichiarazione IVA, Richiedi l'IMU</p>
                   <FzSelect
                     v-model="adempimento"
-                    label="Quale adempimento?"
+                    label="Quale adempimento o task?"
                     :options="adempimentoOptions"
                     filterable
                     environment="backoffice"
                     :error="showErrors && settingsFieldErrors.adempimento"
                     :disabled="isPublished"
+                    @update:model-value="onAdempimentoChange"
                   />
                 </div>
+                <p v-else class="bo-link-intro">
+                  Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.
+                </p>
 
-                <div v-else class="bo-link-detail bo-link-detail--fotask">
-                  <p class="bo-link-intro">Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.</p>
+                <div v-if="showsTaskFields" class="bo-link-detail bo-link-detail--fotask">
                   <FzInput
                     v-model="foTaskTitle"
                     label="Titolo FO Task"
@@ -776,12 +828,6 @@ watch(
                   >
                     <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
                   </FzInput>
-                  <FzInput
-                    v-model="foTaskIdentifier"
-                    label="Identificativo"
-                    environment="backoffice"
-                    :disabled="true"
-                  />
                   <FzSelect
                     v-model="foTaskQueryTarget"
                     label="Query target"
@@ -822,6 +868,25 @@ watch(
                     :disabled="isPublished"
                   />
                 </div>
+              </div>
+            </div>
+
+            <hr class="bo-divider" />
+
+            <div class="bo-section">
+              <div class="bo-section__title">
+                <FzIcon name="file" size="md" class="bo-section__icon" />
+                <span class="bo-section__heading">Guida</span>
+              </div>
+              <div class="bo-section__body">
+                <FzInput
+                  v-model="guideName"
+                  label="Titolo della guida"
+                  placeholder="Scrivi il titolo della guida"
+                  environment="backoffice"
+                  :error="showErrors && settingsFieldErrors.guideName"
+                  :disabled="isPublished"
+                />
               </div>
             </div>
 
