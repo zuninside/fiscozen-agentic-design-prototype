@@ -92,6 +92,14 @@ watch(formTema, (value) => {
   if (value) cancelNewTema()
 })
 
+// Tutti i campi della modale sono obbligatori (nome, tema, descrizione).
+const isProjectFormValid = computed(() => {
+  const nameOk = !!formName.value.trim()
+  const temaOk = showNewTema.value ? !!newTema.value.trim() : !!formTema.value
+  const descOk = !!formDescription.value.trim()
+  return nameOk && temaOk && descOk
+})
+
 const dialogTitle = computed(() =>
   editingId.value ? 'Modifica progetto' : 'Nuovo progetto'
 )
@@ -331,6 +339,7 @@ const onRowAction = (
             variant="primary"
             environment="backoffice"
             label="Salva"
+            :disabled="!isProjectFormValid"
             @click="editDialog?.handleConfirm()"
           />
         </div>

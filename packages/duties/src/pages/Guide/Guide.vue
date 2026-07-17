@@ -202,7 +202,9 @@ const onRowAction = (
             class="bo-project-card"
           >
             <div class="bo-project-card__body">
-              <p v-if="project.tema" class="bo-project-card__tema">{{ temaLabel(project.tema) }}</p>
+              <FzBadge v-if="project.tema" variant="text" tone="dark">
+                {{ temaLabel(project.tema) }}
+              </FzBadge>
               <p v-if="project.description" class="bo-project-card__desc">{{ project.description }}</p>
             </div>
           </FzCard>
@@ -409,20 +411,14 @@ const onRowAction = (
 .bo-project-card__body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-.bo-project-card__tema {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  color: #2c282f;
+  align-items: flex-start;
+  gap: 8px;
 }
 .bo-project-card__desc {
   margin: 0;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 400;
-  line-height: 20px;
+  line-height: 24px;
   color: #596167;
 }
 
