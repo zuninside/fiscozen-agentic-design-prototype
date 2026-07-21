@@ -23,9 +23,7 @@ import { useImportiCatalog } from '../../composables/useImportiCatalog'
 
 const router = useRouter()
 const route = useRoute()
-const projectId = computed(() => Number(route.params.projectId))
-const goHome = () =>
-  router.push({ name: 'progetto', params: { projectId: String(projectId.value) } })
+const goHome = () => router.push({ name: 'progetti' })
 const { addGuide, updateGuide, getGuide, deleteGuide } = useGuides()
 
 // Conferma di eliminazione della guida (FzConfirmDialog piccolo)
@@ -484,7 +482,6 @@ const persist = (status: 'draft' | 'published') => {
     area: '—',
     frontofficeTask: frontofficeTask.value,
     taskYear: isWelfareDeclarationTask.value ? taskYear.value : undefined,
-    projectId: projectId.value,
     steps: steps.value,
     startingPoint: {
       link: guideLink.value,
@@ -503,7 +500,7 @@ const persist = (status: 'draft' | 'published') => {
     const id = addGuide(draft, status)
     router.replace({
       name: 'nuova-guida',
-      params: { projectId: String(projectId.value), id: String(id) }
+      params: { id: String(id) }
     })
   }
   // Allineo la baseline: dopo il salvataggio non ci sono più modifiche pendenti.
@@ -716,7 +713,7 @@ watch(
           <h1 class="bo-header__title">{{ pageTitle }}</h1>
         </div>
         <div class="bo-header__actions">
-          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" :disabled="isPublished" @click="askDeleteGuide" />
+          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" @click="askDeleteGuide" />
           <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
           <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished || !isGuideValid" @click="askPublish" />
         </div>

@@ -73,7 +73,6 @@ export interface Guide {
   productArea?: string | number
   frontofficeTask?: string | number
   taskYear?: string | number
-  projectId?: number
   steps: GuideStep[]
   startingPoint?: GuideStartingPoint
 }
@@ -84,7 +83,6 @@ export type GuideDraft = {
   productArea?: string | number
   frontofficeTask?: string | number
   taskYear?: string | number
-  projectId?: number
   steps: GuideStep[]
   startingPoint?: GuideStartingPoint
 }
@@ -107,7 +105,6 @@ export function useGuides() {
       productArea: data.productArea,
       frontofficeTask: data.frontofficeTask,
       taskYear: data.taskYear,
-      projectId: data.projectId,
       steps: data.steps,
       startingPoint: data.startingPoint,
       author: 'Tu',
@@ -127,7 +124,6 @@ export function useGuides() {
     guide.productArea = data.productArea
     guide.frontofficeTask = data.frontofficeTask
     guide.taskYear = data.taskYear
-    if (data.projectId !== undefined) guide.projectId = data.projectId
     guide.steps = data.steps
     guide.startingPoint = data.startingPoint
     guide.modified = today

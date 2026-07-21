@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { FzIcon } from '@fiscozen/icons'
 import { FzButton, FzIconButton } from '@fiscozen/button'
 import { FzNavbar } from '@fiscozen/navbar'
@@ -12,18 +12,9 @@ import { FzTable } from '@fiscozen/table'
 import { FzColumn } from '@fiscozen/simple-table'
 import { FzConfirmDialog } from '@fiscozen/dialog'
 import { FzDivider } from '@fiscozen/divider'
-import { FzCard } from '@fiscozen/card'
 import { useGuides, type Guide } from '../../composables/useGuides'
-import { useProjects } from '../../composables/useProjects'
 
 const router = useRouter()
-const route = useRoute()
-
-const projectId = computed(() => Number(route.params.projectId))
-const { getProject, projectTemaOptions } = useProjects()
-const project = computed(() => getProject(projectId.value))
-const temaLabel = (value?: string | number) =>
-  projectTemaOptions.value.find((o) => o.value === value)?.label ?? '—'
 
 const search = ref('')
 
@@ -33,7 +24,6 @@ const sortOptions = [
   { value: 'updated', label: 'Ultima modifica' },
   { value: 'title', label: 'Titolo (A-Z)' }
 ]
-
 
 const annualita = ref<string | number | undefined>('all')
 
@@ -58,10 +48,9 @@ const filteredGuides = computed({
   get() {
     const query = search.value.trim().toLowerCase()
     let list = guides.value.filter((g) => {
-      const projectOk = g.projectId === projectId.value
       const annoOk = annualita.value === 'all' || g.taskYear === annualita.value
       const searchOk = !query || g.title.toLowerCase().includes(query)
-      return projectOk && annoOk && searchOk
+      return annoOk && searchOk
     })
     if (sortBy.value === 'title') {
       list = [...list].sort((a, b) => a.title.localeCompare(b.title))
@@ -84,14 +73,9 @@ const rowActions = (guide: Guide) => ({
   ]
 })
 
-const goToProjects = () => router.push({ name: 'progetti' })
-const openEditor = () =>
-  router.push({ name: 'nuova-guida', params: { projectId: String(projectId.value) } })
+const openEditor = () => router.push({ name: 'nuova-guida' })
 const editGuide = (guide: Guide) =>
-  router.push({
-    name: 'nuova-guida',
-    params: { projectId: String(projectId.value), id: String(guide.id) }
-  })
+  router.push({ name: 'nuova-guida', params: { id: String(guide.id) } })
 
 const askDeleteGuide = (guide: Guide) => {
   guideToDelete.value = guide
@@ -144,16 +128,7 @@ const onRowAction = (
       <div class="bo-content-card">
       <!-- Header -->
       <header class="bo-header">
-        <div class="bo-header__heading">
-          <FzIconButton
-            iconName="chevron-left"
-            variant="invisible"
-            environment="backoffice"
-            aria-label="Torna ai progetti"
-            @click="goToProjects"
-          />
-          <h1 class="bo-header__title">{{ project?.name ?? 'Guide' }}</h1>
-        </div>
+        <h1 class="bo-header__title">Guide clienti</h1>
         <div class="bo-header__actions">
           <FzButton
             label="Nuova guida"
@@ -183,7 +158,7 @@ const onRowAction = (
           />
           <FzSelect
             v-model="annualita"
-            label="Annualità"
+            label="Anno"
             :options="annualitaOptions"
             environment="backoffice"
           />
@@ -194,28 +169,13 @@ const onRowAction = (
 
         <!-- Content column -->
         <div class="bo-content">
-          <!-- Project info card -->
-          <FzCard
-            v-if="project && (project.tema || project.description)"
-            color="grey"
-            environment="backoffice"
-            class="bo-project-card"
-          >
-            <div class="bo-project-card__body">
-              <FzBadge v-if="project.tema" variant="text" tone="dark">
-                {{ temaLabel(project.tema) }}
-              </FzBadge>
-              <p v-if="project.description" class="bo-project-card__desc">{{ project.description }}</p>
-            </div>
-          </FzCard>
-
           <!-- Empty state -->
           <div v-if="!filteredGuides.length" class="bo-empty">
             <p class="bo-empty__text">
               {{
                 guides.length
                   ? 'Nessuna guida corrisponde ai filtri selezionati.'
-                  : 'Non sono ancora state create delle guide in questo progetto'
+                  : 'Non sono ancora state create delle guide'
               }}
             </p>
           </div>
@@ -336,12 +296,6 @@ const onRowAction = (
   justify-content: space-between;
   padding: 0 24px;
 }
-.bo-header__heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
 .bo-header__title {
   font-size: 20px;
   font-weight: 600;
@@ -352,10 +306,6 @@ const onRowAction = (
   display: flex;
   align-items: center;
   gap: 12px;
-}
-.bo-header__search {
-  width: 260px;
-  flex-shrink: 0;
 }
 
 /* Body */
@@ -402,24 +352,6 @@ const onRowAction = (
   display: flex;
   flex-direction: column;
   gap: 24px;
-}
-
-/* Project info card */
-.bo-project-card {
-  flex-shrink: 0;
-}
-.bo-project-card__body {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.bo-project-card__desc {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 24px;
-  color: #596167;
 }
 
 /* Empty state */

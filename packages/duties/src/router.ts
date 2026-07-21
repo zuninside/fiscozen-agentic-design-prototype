@@ -4,7 +4,6 @@ import { Home } from './pages/Home'
 import { ComunicaRedditiInarcassa } from './pages/ComunicaRedditiInarcassa'
 import { BackofficeDashboard } from './pages/BackofficeDashboard'
 import { RegistrazioneContabile } from './pages/RegistrazioneContabile'
-import { Progetti } from './pages/Progetti'
 import { Guide } from './pages/Guide'
 import { NuovaGuida } from './pages/NuovaGuida'
 
@@ -32,15 +31,10 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/progetti',
     name: 'progetti',
-    component: Progetti
-  },
-  {
-    path: '/progetti/:projectId',
-    name: 'progetto',
     component: Guide
   },
   {
-    path: '/progetti/:projectId/nuova-guida/:id?',
+    path: '/progetti/nuova-guida/:id?',
     name: 'nuova-guida',
     component: NuovaGuida
   }
