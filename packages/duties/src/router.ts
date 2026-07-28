@@ -29,12 +29,12 @@ const routes: RouteRecordRaw[] = [
     component: RegistrazioneContabile
   },
   {
-    path: '/progetti',
+    path: '/guide-clienti',
     name: 'progetti',
     component: Guide
   },
   {
-    path: '/progetti/nuova-guida/:id?',
+    path: '/guide-clienti/nuova-guida/:id?',
     name: 'nuova-guida',
     component: NuovaGuida
   }

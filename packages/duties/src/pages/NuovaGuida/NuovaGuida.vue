@@ -24,13 +24,21 @@ import { useImportiCatalog } from '../../composables/useImportiCatalog'
 const router = useRouter()
 const route = useRoute()
 const goHome = () => router.push({ name: 'progetti' })
-const { addGuide, updateGuide, getGuide, deleteGuide } = useGuides()
+const { addGuide, updateGuide, getGuide, deleteGuide, unpublishGuide } = useGuides()
 
-// Conferma di eliminazione della guida (FzConfirmDialog piccolo)
+// Bottone header: elimina (bozza) oppure annulla pubblicazione (guida pubblicata)
 const deleteDialog = ref<InstanceType<typeof FzConfirmDialog>>()
-const askDeleteGuide = () => deleteDialog.value?.show()
+const unpublishDialog = ref<InstanceType<typeof FzConfirmDialog>>()
+const askDeleteGuide = () => {
+  if (isPublished.value) unpublishDialog.value?.show()
+  else deleteDialog.value?.show()
+}
 const confirmDeleteGuide = () => {
   if (editingId.value) deleteGuide(editingId.value)
+  goHome()
+}
+const confirmUnpublish = () => {
+  if (editingId.value) unpublishGuide(editingId.value)
   goHome()
 }
 
@@ -76,6 +84,12 @@ const pageTitle = computed(() => {
 const isPublished = computed(
   () => !!editingId.value && getGuide(editingId.value)?.status === 'published'
 )
+// Sola lettura sia per le guide pubblicate sia per quelle con pubblicazione
+// annullata: entrambe non sono modificabili né (ri)pubblicabili.
+const isReadOnly = computed(() => {
+  const status = editingId.value ? getGuide(editingId.value)?.status : undefined
+  return status === 'published' || status === 'unpublished'
+})
 const publishLabel = computed(() => (isPublished.value ? 'Aggiorna' : 'Pubblica'))
 
 const toastQueue = ref<Toast[]>([])
@@ -178,6 +192,8 @@ const foTaskQueryTargetOptions = [
   { value: 'welfare_pending', label: 'Contributi previdenziali da versare' }
 ]
 const foTaskStartDate = ref<Date | null>(null)
+// La data di inizio non può essere anteriore a oggi (giorno di creazione).
+const taskStartMinDate = new Date(new Date().setHours(0, 0, 0, 0))
 const foTaskEndDate = ref<Date | null>(null)
 const foTaskHasDeadline = ref(false)
 const foTaskDeadline = ref<Date | null>(null)
@@ -262,9 +278,7 @@ const settingsFieldErrors = computed(() => ({
   adempimento: guideLink.value === 'adempimento' && isBlank(adempimento.value),
   foTaskTitle: showsTaskFields.value && isBlank(foTaskTitle.value),
   foTaskQueryTarget: showsTaskFields.value && isBlank(foTaskQueryTarget.value),
-  foTaskStartDate: showsTaskFields.value && !foTaskStartDate.value,
-  foTaskEndDate: showsTaskFields.value && !foTaskEndDate.value,
-  foTaskDeadline: showsTaskFields.value && foTaskHasDeadline.value && !foTaskDeadline.value
+  foTaskStartDate: showsTaskFields.value && !foTaskStartDate.value
 }))
 const settingsHasErrors = computed(() =>
   Object.values(settingsFieldErrors.value).some(Boolean)
@@ -404,6 +418,26 @@ const { getFonti, getFonte } = useImportiCatalog()
 
 const fonteOptions = getFonti().map((f) => ({ value: f.key, label: f.label }))
 
+// Se l'adempimento collegato è una comunicazione reddituale, la fonte dei calcoli
+// negli Importi è preimpostata e non modificabile (fonte della cassa scelta).
+const comunicazioneReddituFonte: Record<string, string> = {
+  comunicazione_reddituale_enpam: 'enpam_welfare',
+  comunicazione_reddituale_enpap: 'enpap_welfare',
+  comunicazione_reddituale_enpapi: 'enpapi_welfare',
+  comunicazione_reddituale_inarcassa: 'inarcassa_welfare',
+  comunicazione_reddituale_forense: 'forense_welfare'
+}
+const lockedFonteKey = computed(() =>
+  guideLink.value === 'adempimento'
+    ? comunicazioneReddituFonte[String(adempimento.value)] ?? null
+    : null
+)
+// Quando la fonte è bloccata, allinea tutti gli Importi già presenti.
+watch(lockedFonteKey, (key) => {
+  if (!key) return
+  steps.value.forEach((s) => s.importi.forEach((i) => (i.fonte = key)))
+})
+
 // Only one of Importi / Documenti / Domanda can be added per step
 // (Alert is always available).
 const hasExclusiveContent = computed(() => {
@@ -414,7 +448,7 @@ const hasExclusiveContent = computed(() => {
 
 const addImporto = () => {
   if (!currentStep.value || hasExclusiveContent.value) return
-  currentStep.value.importi.push({ fonte: '' })
+  currentStep.value.importi.push({ fonte: lockedFonteKey.value ?? '' })
 }
 
 const removeImporto = (index: number) => {
@@ -552,6 +586,40 @@ const previewMediaUrl = computed(() =>
 const previewMediaIsVideo = computed(() =>
   previewMediaFile.value?.type.startsWith('video/') ?? false
 )
+// L'anteprima del media si adatta al file caricato usando i rapporti consentiti:
+// 16:9 o 4:3 per gli orizzontali, 3:4 per i verticali.
+const previewMediaAspect = ref('16 / 9')
+const pickMediaAspect = (w: number, h: number) => {
+  if (!w || !h) return '16 / 9'
+  const ratio = w / h
+  if (ratio >= 1) {
+    return Math.abs(ratio - 16 / 9) <= Math.abs(ratio - 4 / 3) ? '16 / 9' : '4 / 3'
+  }
+  return '3 / 4'
+}
+watch(
+  [previewMediaUrl, previewMediaIsVideo],
+  ([url, isVideo]) => {
+    if (!url) {
+      previewMediaAspect.value = '16 / 9'
+      return
+    }
+    if (isVideo) {
+      const video = document.createElement('video')
+      video.onloadedmetadata = () => {
+        previewMediaAspect.value = pickMediaAspect(video.videoWidth, video.videoHeight)
+      }
+      video.src = url
+    } else {
+      const img = new Image()
+      img.onload = () => {
+        previewMediaAspect.value = pickMediaAspect(img.naturalWidth, img.naturalHeight)
+      }
+      img.src = url
+    }
+  },
+  { immediate: true }
+)
 const sampleImportoValue = '€ 12.000,00'
 
 // Preview-only answer state for the interactive question mock
@@ -609,6 +677,33 @@ watch(
             environment="backoffice"
             label="Elimina"
             @click="deleteDialog?.handleConfirm()"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
+
+    <FzConfirmDialog
+      ref="unpublishDialog"
+      size="sm"
+      title="Annulla pubblicazione"
+      @fzmodal:confirm="confirmUnpublish"
+    >
+      <template #body>
+        <p>Il cliente non avrà più accesso a questa guida.</p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="invisible"
+            environment="backoffice"
+            label="Annulla"
+            @click="unpublishDialog?.handleCancel()"
+          />
+          <FzButton
+            variant="danger"
+            environment="backoffice"
+            label="Annulla pubblicazione"
+            @click="unpublishDialog?.handleConfirm()"
           />
         </div>
       </template>
@@ -713,9 +808,9 @@ watch(
           <h1 class="bo-header__title">{{ pageTitle }}</h1>
         </div>
         <div class="bo-header__actions">
-          <FzButton label="Elimina guida" iconName="trash" variant="danger" environment="backoffice" @click="askDeleteGuide" />
-          <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isPublished" @click="save" />
-          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isPublished || !isGuideValid" @click="askPublish" />
+          <FzButton :label="isPublished ? 'Annulla pubblicazione' : 'Elimina guida'" :iconName="isPublished ? 'circle-xmark' : 'trash'" variant="danger" environment="backoffice" @click="askDeleteGuide" />
+          <FzButton label="Salva" iconName="floppy-disk" variant="secondary" environment="backoffice" :disabled="isReadOnly" @click="save" />
+          <FzButton :label="publishLabel" iconName="paper-plane" variant="primary" environment="backoffice" :disabled="isReadOnly || !isGuideValid" @click="askPublish" />
         </div>
       </header>
 
@@ -748,14 +843,14 @@ watch(
             />
           </div>
           <div class="bo-steps__add">
-            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isPublished" @click="addStep" />
+            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isReadOnly" @click="addStep" />
           </div>
         </section>
 
         <!-- Column 2: editor -->
         <section class="bo-editor">
           <!-- Version tabs: shown only when a Live snapshot and a divergent Bozza both exist -->
-          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isPublished }">
+          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isReadOnly }">
           <template v-if="isSettings">
             <div class="bo-section">
               <div class="bo-section__title">
@@ -780,8 +875,8 @@ watch(
                     label="adempimento"
                     title="Un task esistente"
                     orientation="vertical"
-                    :has-radio="false"
-                    :disabled="isPublished"
+                    :has-radio="true"
+                    :disabled="isReadOnly"
                     @update:model-value="onGuideLinkChange"
                   />
                   <FzRadioCard
@@ -791,8 +886,8 @@ watch(
                     label="fotask"
                     title="Un nuovo task"
                     orientation="vertical"
-                    :has-radio="false"
-                    :disabled="isPublished"
+                    :has-radio="true"
+                    :disabled="isReadOnly"
                     @update:model-value="onGuideLinkChange"
                   />
                 </FzRadioGroup>
@@ -806,7 +901,7 @@ watch(
                     filterable
                     environment="backoffice"
                     :error="showErrors && settingsFieldErrors.adempimento"
-                    :disabled="isPublished"
+                    :disabled="isReadOnly"
                     @update:model-value="onAdempimentoChange"
                   />
                 </div>
@@ -821,7 +916,7 @@ watch(
                     placeholder="Scrivi il titolo del task"
                     environment="backoffice"
                     :error="showErrors && settingsFieldErrors.foTaskTitle"
-                    :disabled="isPublished"
+                    :disabled="isReadOnly"
                   >
                     <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
                   </FzInput>
@@ -832,37 +927,32 @@ watch(
                     filterable
                     environment="backoffice"
                     :error="showErrors && settingsFieldErrors.foTaskQueryTarget"
-                    :disabled="isPublished"
+                    :disabled="isReadOnly"
                   />
                   <div class="bo-date-row">
                     <FzDatepicker
                       v-model="foTaskStartDate"
+                      :min-date="taskStartMinDate"
                       :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskStartDate }"
-                      :disabled="isPublished"
+                      :disabled="isReadOnly"
                     >
                       <template #helpText>È la data in cui verrà mostrato il task</template>
                     </FzDatepicker>
                     <FzDatepicker
                       v-model="foTaskEndDate"
-                      :min-date="foTaskStartDate ?? undefined"
-                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskEndDate }"
-                      :disabled="isPublished"
+                      :min-date="foTaskStartDate ?? taskStartMinDate"
+                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                      :disabled="isReadOnly"
                     >
                       <template #helpText>È la data in cui verrà tolto il task</template>
                     </FzDatepicker>
                   </div>
-                  <FzCheckbox
-                    v-model="foTaskHasDeadline"
-                    label="Questo task ha una scadenza"
-                    :disabled="isPublished"
-                  />
                   <FzDatepicker
-                    v-if="foTaskHasDeadline"
                     v-model="foTaskDeadline"
-                    :min-date="foTaskStartDate ?? undefined"
+                    :min-date="foTaskStartDate ?? taskStartMinDate"
                     :max-date="foTaskEndDate ?? undefined"
-                    :input-props="{ label: 'Scadenza', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskDeadline }"
-                    :disabled="isPublished"
+                    :input-props="{ label: 'Da fare entro il', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
+                    :disabled="isReadOnly"
                   />
                 </div>
               </div>
@@ -882,7 +972,7 @@ watch(
                   placeholder="Scrivi il titolo della guida"
                   environment="backoffice"
                   :error="showErrors && settingsFieldErrors.guideName"
-                  :disabled="isPublished"
+                  :disabled="isReadOnly"
                 />
               </div>
             </div>
@@ -903,7 +993,7 @@ watch(
                     placeholder="Scrivi il titolo di questo passaggio"
                     environment="backoffice"
                     :error="showErrors && !!currentStepErrors?.title"
-                    :disabled="isPublished"
+                    :disabled="isReadOnly"
                   />
                 </div>
               </div>
@@ -918,6 +1008,10 @@ watch(
                 <span class="bo-section__heading">Media</span>
               </div>
               <div class="bo-section__body">
+                <p class="bo-media-hint">
+                  I contenuti multimediali devono essere immagini o video e avere un rapporto di
+                  16:9, 4:3 per quelli orizzontali, mentre 3:4 per quelli verticali.
+                </p>
                 <FzUpload
                   :key="currentStep.id"
                   v-model="currentStep.media"
@@ -944,7 +1038,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isPublished || !!currentStep.alert"
+                    :disabled="isReadOnly || !!currentStep.alert"
                     @click="addAlert"
                   />
                   <FzButton
@@ -952,7 +1046,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isPublished || hasExclusiveContent"
+                    :disabled="isReadOnly || hasExclusiveContent"
                     @click="addImporto"
                   />
                   <FzButton
@@ -960,7 +1054,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isPublished || hasExclusiveContent"
+                    :disabled="isReadOnly || hasExclusiveContent"
                     @click="addDocumento"
                   />
                   <FzButton
@@ -968,7 +1062,7 @@ watch(
                     iconName="plus"
                     variant="secondary"
                     environment="backoffice"
-                    :disabled="isPublished || hasExclusiveContent"
+                    :disabled="isReadOnly || hasExclusiveContent"
                     @click="addDomanda"
                   />
                 </div>
@@ -983,7 +1077,7 @@ watch(
                     :rows="6"
                     resize="vertical"
                     :error="showErrors && !!currentStepErrors?.description"
-                    :disabled="isPublished"
+                    :disabled="isReadOnly"
                   />
                 </div>
 
@@ -998,7 +1092,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi alert"
-                        :disabled="isPublished"
+                        :disabled="isReadOnly"
                         @click="removeAlert"
                       />
                     </div>
@@ -1008,7 +1102,7 @@ watch(
                       placeholder="Seleziona il tono"
                       :options="alertToneOptions"
                       environment="backoffice"
-                      :disabled="isPublished"
+                      :disabled="isReadOnly"
                     />
                     <FzSelect
                       v-model="currentStep.alert.position"
@@ -1016,7 +1110,7 @@ watch(
                       placeholder="Seleziona la posizione"
                       :options="alertPositionOptions"
                       environment="backoffice"
-                      :disabled="isPublished"
+                      :disabled="isReadOnly"
                     />
                     <FzInput
                       v-model="currentStep.alert.title"
@@ -1024,7 +1118,7 @@ watch(
                       placeholder="Scrivi il titolo dell'alert"
                       environment="backoffice"
                       :error="showErrors && !!currentStepErrors?.alert?.title"
-                      :disabled="isPublished"
+                      :disabled="isReadOnly"
                     />
                     <FzInput
                       v-model="currentStep.alert.text"
@@ -1032,7 +1126,7 @@ watch(
                       placeholder="Scrivi il testo dell'alert"
                       environment="backoffice"
                       :error="showErrors && !!currentStepErrors?.alert?.text"
-                      :disabled="isPublished"
+                      :disabled="isReadOnly"
                     />
                   </div>
                 </template>
@@ -1048,7 +1142,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi importi"
-                        :disabled="isPublished"
+                        :disabled="isReadOnly"
                         @click="removeImporto(0)"
                       />
                     </div>
@@ -1065,7 +1159,7 @@ watch(
                           :options="fonteOptions"
                           :error="showErrors && !!currentStepErrors?.importi[index]"
                           environment="backoffice"
-                          :disabled="isPublished"
+                          :disabled="isReadOnly || !!lockedFonteKey"
                         />
                         <div v-if="getFonte(importo.fonte)" class="bo-importo__list">
                           <div
@@ -1092,7 +1186,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi documento"
-                        :disabled="isPublished"
+                        :disabled="isReadOnly"
                         @click="removeDocumento(0)"
                       />
                     </div>
@@ -1103,7 +1197,7 @@ watch(
                     >
                       <div class="bo-documento__field">
                         <div class="bo-documento__option">
-                          <FzCheckbox v-model="documento.fornisci" label="Fornisci un documento" :disabled="isPublished" />
+                          <FzCheckbox v-model="documento.fornisci" label="Fornisci un documento" :disabled="isReadOnly" />
                           <FzUpload
                             v-if="documento.fornisci"
                             v-model="documento.files"
@@ -1113,7 +1207,7 @@ watch(
                           />
                         </div>
                         <div class="bo-documento__option">
-                          <FzCheckbox v-model="documento.richiedi" label="Richiedi un documento" :disabled="isPublished" />
+                          <FzCheckbox v-model="documento.richiedi" label="Richiedi un documento" :disabled="isReadOnly" />
                           <template v-if="documento.richiedi">
                             <div
                               v-for="(richiesta, rIndex) in documento.requests"
@@ -1126,21 +1220,21 @@ watch(
                                 placeholder="Scrivi la richiesta per il cliente"
                                 environment="backoffice"
                                 :error="showErrors && !!currentStepErrors?.documenti[index]?.requests[rIndex]"
-                                :disabled="isPublished"
+                                :disabled="isReadOnly"
                               />
                               <FzIconButton
                                 iconName="trash"
                                 variant="invisible"
                                 environment="backoffice"
                                 aria-label="Rimuovi richiesta"
-                                :disabled="isPublished || documento.requests.length <= 1"
+                                :disabled="isReadOnly || documento.requests.length <= 1"
                                 @click="removeRichiesta(documento, rIndex)"
                               />
                             </div>
                             <FzButton
                               variant="invisible"
                               environment="backoffice"
-                              :disabled="isPublished"
+                              :disabled="isReadOnly"
                               @click="addRichiesta(documento)"
                             >
                               Aggiungi richiesta
@@ -1163,7 +1257,7 @@ watch(
                         variant="invisible"
                         environment="backoffice"
                         aria-label="Rimuovi domanda"
-                        :disabled="isPublished"
+                        :disabled="isReadOnly"
                         @click="removeDomanda(0)"
                       />
                     </div>
@@ -1179,7 +1273,7 @@ watch(
                           placeholder="Seleziona il tipo"
                           :options="domandaTypeOptions"
                           environment="backoffice"
-                          :disabled="isPublished"
+                          :disabled="isReadOnly"
                         />
                         <FzInput
                           v-model="domanda.question"
@@ -1187,7 +1281,7 @@ watch(
                           placeholder="Scrivi la domanda"
                           environment="backoffice"
                           :error="showErrors && !!currentStepErrors?.domande[index]?.question"
-                          :disabled="isPublished"
+                          :disabled="isReadOnly"
                         />
                         <p v-if="domanda.type === 'importi'" class="bo-domanda__hint">
                           L'utente inserirà una cifra in un campo importo.
@@ -1203,14 +1297,14 @@ watch(
                               :placeholder="`Risposta ${aIndex + 1}`"
                               environment="backoffice"
                               :error="showErrors && !!currentStepErrors?.domande[index]?.answers[aIndex]"
-                              :disabled="isPublished"
+                              :disabled="isReadOnly"
                             />
                             <FzIconButton
                               iconName="trash"
                               variant="invisible"
                               environment="backoffice"
                               aria-label="Rimuovi risposta"
-                              :disabled="isPublished || domanda.answers.length <= 1"
+                              :disabled="isReadOnly || domanda.answers.length <= 1"
                               @click="removeRisposta(domanda, aIndex)"
                             />
                           </div>
@@ -1219,7 +1313,7 @@ watch(
                             iconName="plus"
                             variant="invisible"
                             environment="backoffice"
-                            :disabled="isPublished"
+                            :disabled="isReadOnly"
                             @click="addRisposta(domanda)"
                           />
                         </div>
@@ -1234,14 +1328,14 @@ watch(
           </div>
 
           <!-- Footer: delete step (solo con più di uno step) -->
-          <div v-if="currentStep && steps.length > 1" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isPublished }">
+          <div v-if="currentStep && steps.length > 1" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isReadOnly }">
             <FzButton
               v-if="steps.length > 1"
               label="Elimina passaggio"
               iconName="trash"
               variant="danger"
               environment="backoffice"
-              :disabled="isPublished"
+              :disabled="isReadOnly"
               @click="removeStep"
             />
           </div>
@@ -1275,7 +1369,7 @@ watch(
                 <template v-if="previewStep">
                   <div class="bo-phone__body">
                     <!-- Media -->
-                    <div v-if="previewMediaUrl" class="bo-phone__media">
+                    <div v-if="previewMediaUrl" class="bo-phone__media" :style="{ aspectRatio: previewMediaAspect }">
                       <video v-if="previewMediaIsVideo" :src="previewMediaUrl" controls />
                       <img v-else :src="previewMediaUrl" alt="" />
                     </div>
@@ -1559,12 +1653,6 @@ watch(
 .bo-link-group :deep(label p.font-medium) {
   font-weight: 600;
 }
-.bo-link-group :deep(label > div) {
-  margin-top: 0;
-}
-.bo-link-group :deep(label) {
-  padding: 12px;
-}
 .bo-link-detail {
   display: flex;
   flex-direction: column;
@@ -1662,6 +1750,14 @@ watch(
   font-weight: 400;
   line-height: 20px;
   color: #596167;
+}
+.bo-media-hint {
+  /* Paragraph (16px) + colore core/black, come gli altri testi */
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  color: #2c282f;
 }
 .bo-block {
   display: flex;
@@ -1872,7 +1968,8 @@ watch(
 }
 .bo-phone__media {
   flex-shrink: 0;
-  height: 180px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   border: 1px solid #e9edf0;
   border-radius: 8px;
   background: #f4f6ff;

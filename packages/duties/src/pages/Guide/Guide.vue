@@ -27,12 +27,14 @@ const sortOptions = [
 
 const annualita = ref<string | number | undefined>('all')
 
+const authorFilter = ref<string | number | undefined>('all')
+
 const guideName = (guide: Guide) =>
   guide.taskYear ? `${guide.title} ${guide.taskYear}` : guide.title
 
 const railIcons = ['suitcase', 'folder-open', 'credit-card', 'cart-shopping', 'calendar', 'file', 'gear']
 
-const { guides, deleteGuide, duplicateGuide } = useGuides()
+const { guides, deleteGuide, duplicateGuide, unpublishGuide } = useGuides()
 
 const annualitaOptions = computed(() => {
   const years = Array.from(
@@ -41,16 +43,27 @@ const annualitaOptions = computed(() => {
   return [{ value: 'all', label: 'Tutte' }, ...years.map((y) => ({ value: y, label: String(y) }))]
 })
 
+// Solo i creatori che hanno effettivamente creato almeno una guida
+const authorOptions = computed(() => {
+  const authors = Array.from(
+    new Set(guides.value.map((g) => g.author).filter((a): a is string => !!a))
+  ).sort((a, b) => a.localeCompare(b))
+  return [{ value: 'all', label: 'Tutti' }, ...authors.map((a) => ({ value: a, label: a }))]
+})
+
 const deleteDialog = ref<InstanceType<typeof FzConfirmDialog>>()
 const guideToDelete = ref<Guide | null>(null)
+const unpublishDialog = ref<InstanceType<typeof FzConfirmDialog>>()
+const guideToUnpublish = ref<Guide | null>(null)
 
 const filteredGuides = computed({
   get() {
     const query = search.value.trim().toLowerCase()
     let list = guides.value.filter((g) => {
       const annoOk = annualita.value === 'all' || g.taskYear === annualita.value
+      const authorOk = authorFilter.value === 'all' || g.author === authorFilter.value
       const searchOk = !query || g.title.toLowerCase().includes(query)
-      return annoOk && searchOk
+      return annoOk && authorOk && searchOk
     })
     if (sortBy.value === 'title') {
       list = [...list].sort((a, b) => a.title.localeCompare(b.title))
@@ -65,13 +78,19 @@ const filteredGuides = computed({
 })
 
 // Actions are computed per-row so "Elimina" can be disabled on published guides
-const rowActions = (guide: Guide) => ({
-  items: [
+const rowActions = (guide: Guide) => {
+  const items = [
     { type: 'action' as const, label: 'Apri' },
-    { type: 'action' as const, label: 'Duplica' },
-    { type: 'action' as const, label: 'Elimina', disabled: guide.status === 'published' }
+    { type: 'action' as const, label: 'Duplica' }
   ]
-})
+  // Pubblicata -> "Annulla pubblicazione"; bozza -> "Elimina"; annullata -> nessuna azione distruttiva
+  if (guide.status === 'published') {
+    items.push({ type: 'action' as const, label: 'Annulla pubblicazione' })
+  } else if (guide.status !== 'unpublished') {
+    items.push({ type: 'action' as const, label: 'Elimina' })
+  }
+  return { items }
+}
 
 const openEditor = () => router.push({ name: 'nuova-guida' })
 const editGuide = (guide: Guide) =>
@@ -91,6 +110,20 @@ const cancelDeleteGuide = () => {
   guideToDelete.value = null
 }
 
+const askUnpublishGuide = (guide: Guide) => {
+  guideToUnpublish.value = guide
+  unpublishDialog.value?.show()
+}
+
+const confirmUnpublishGuide = () => {
+  if (guideToUnpublish.value) unpublishGuide(guideToUnpublish.value.id)
+  guideToUnpublish.value = null
+}
+
+const cancelUnpublishGuide = () => {
+  guideToUnpublish.value = null
+}
+
 const onRowAction = (
   _index: number,
   action: { label?: string },
@@ -99,7 +132,8 @@ const onRowAction = (
   if (!rowData) return
   if (action.label === 'Apri') editGuide(rowData)
   else if (action.label === 'Duplica') duplicateGuide(rowData.id)
-  else if (action.label === 'Elimina' && rowData.status !== 'published') askDeleteGuide(rowData)
+  else if (action.label === 'Elimina') askDeleteGuide(rowData)
+  else if (action.label === 'Annulla pubblicazione') askUnpublishGuide(rowData)
 }
 </script>
 
@@ -162,6 +196,12 @@ const onRowAction = (
             :options="annualitaOptions"
             environment="backoffice"
           />
+          <FzSelect
+            v-model="authorFilter"
+            label="Creatore"
+            :options="authorOptions"
+            environment="backoffice"
+          />
         </aside>
 
         <!-- Vertical divider -->
@@ -198,9 +238,15 @@ const onRowAction = (
               <template #default="{ data }">
                 <FzBadge
                   variant="text"
-                  :tone="data.status === 'published' ? 'success' : 'light'"
+                  :tone="data.status === 'published' ? 'success' : data.status === 'unpublished' ? 'error' : 'light'"
                 >
-                  {{ data.status === 'published' ? 'Pubblicato' : 'Bozza' }}
+                  {{
+                    data.status === 'published'
+                      ? 'Pubblicato'
+                      : data.status === 'unpublished'
+                        ? 'Pubblicazione annullata'
+                        : 'Bozza'
+                  }}
                 </FzBadge>
               </template>
             </FzColumn>
@@ -240,6 +286,34 @@ const onRowAction = (
             environment="backoffice"
             label="Elimina"
             @click="deleteDialog?.handleConfirm()"
+          />
+        </div>
+      </template>
+    </FzConfirmDialog>
+
+    <FzConfirmDialog
+      ref="unpublishDialog"
+      size="sm"
+      title="Annulla pubblicazione"
+      @fzmodal:confirm="confirmUnpublishGuide"
+      @fzmodal:cancel="cancelUnpublishGuide"
+    >
+      <template #body>
+        <p>Il cliente non avrà più accesso a questa guida.</p>
+      </template>
+      <template #footer>
+        <div class="bo-dialog-footer">
+          <FzButton
+            variant="invisible"
+            environment="backoffice"
+            label="Annulla"
+            @click="unpublishDialog?.handleCancel()"
+          />
+          <FzButton
+            variant="danger"
+            environment="backoffice"
+            label="Annulla pubblicazione"
+            @click="unpublishDialog?.handleConfirm()"
           />
         </div>
       </template>

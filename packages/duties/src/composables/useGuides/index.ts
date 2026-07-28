@@ -47,7 +47,7 @@ export interface GuideStep {
   domande: GuideStepDomanda[]
 }
 
-export type GuideStatus = 'draft' | 'published'
+export type GuideStatus = 'draft' | 'published' | 'unpublished'
 
 /** "Punto di partenza": a cosa è collegata la guida (adempimento esistente o
  *  nuovo FO Task) e la configurazione del task. */
@@ -136,6 +136,15 @@ export function useGuides() {
     if (index !== -1) guides.value.splice(index, 1)
   }
 
+  /** Annulla la pubblicazione: la guida resta in lista ma con stato
+   *  "pubblicazione annullata" (il cliente non vi ha più accesso). */
+  const unpublishGuide = (id: number) => {
+    const guide = getGuide(id)
+    if (!guide) return
+    guide.status = 'unpublished'
+    guide.modified = formatDate(new Date())
+  }
+
   const duplicateGuide = (id: number) => {
     const source = getGuide(id)
     if (!source) return
@@ -154,5 +163,5 @@ export function useGuides() {
     return newId
   }
 
-  return { guides, getGuide, addGuide, updateGuide, deleteGuide, duplicateGuide }
+  return { guides, getGuide, addGuide, updateGuide, deleteGuide, unpublishGuide, duplicateGuide }
 }

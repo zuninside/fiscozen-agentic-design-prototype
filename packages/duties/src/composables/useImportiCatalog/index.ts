@@ -104,8 +104,26 @@ const ENPAPI: FonteCalcoli = {
   ]
 }
 
+const ENPAP: FonteCalcoli = {
+  key: 'enpap_welfare',
+  label: 'Calcoli previdenziali ENPAP',
+  importi: [
+    { key: 'calculated_volume_of_business_amount', label: "Volume d'affari" },
+    { key: 'calculated_professional_income_amount', label: 'Reddito professionale' }
+  ]
+}
+
+const FORENSE: FonteCalcoli = {
+  key: 'forense_welfare',
+  label: 'Calcoli previdenziali Cassa Forense',
+  importi: [
+    { key: 'calculated_volume_of_business_amount', label: "Volume d'affari" },
+    { key: 'calculated_professional_income_amount', label: 'Reddito professionale' }
+  ]
+}
+
 /** Registry of calculation sources — mirrors the admin-configured table */
-const fonti: FonteCalcoli[] = [INARCASSA, INTRASTAT, ENPAM, ENPAPI]
+const fonti: FonteCalcoli[] = [INARCASSA, INTRASTAT, ENPAM, ENPAPI, ENPAP, FORENSE]
 
 export function useImportiCatalog() {
   const getFonti = (): FonteCalcoli[] => fonti
