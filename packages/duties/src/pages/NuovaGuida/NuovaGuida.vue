@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type ComponentPublicInstance } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { FzIcon } from '@fiscozen/icons'
 import { FzButton, FzIconButton } from '@fiscozen/button'
@@ -18,6 +18,8 @@ import { FzStepper } from '@fiscozen/stepper'
 import { FzAlert } from '@fiscozen/alert'
 import { FzCard } from '@fiscozen/card'
 import { FzToastQueue, enqueueToast, type Toast } from '@fiscozen/toast'
+import { FzFloating, useClickOutside } from '@fiscozen/composables'
+import { FzActionList, FzActionSection, FzAction } from '@fiscozen/action'
 import { useGuides, type GuideStep, type GuideStepDomanda, type GuideStepDocumento } from '../../composables/useGuides'
 import { useImportiCatalog } from '../../composables/useImportiCatalog'
 
@@ -94,7 +96,20 @@ const publishLabel = computed(() => (isPublished.value ? 'Aggiorna' : 'Pubblica'
 
 const toastQueue = ref<Toast[]>([])
 
-const railIcons = ['suitcase', 'folder-open', 'credit-card', 'cart-shopping', 'calendar', 'file', 'gear']
+const railIcons = ['suitcase', 'folder-open', 'credit-card', 'cart-shopping', 'calendar', 'file']
+
+// Menu del bottone "gear" (ingranaggio): elenco delle pagine disponibili.
+// Costruito con FzFloating per aprirsi a destra dell'icona (non sotto).
+const gearOpen = ref(false)
+const gearFloating = ref<ComponentPublicInstance>()
+const gearFloatingDom = computed(() => gearFloating.value?.$el)
+useClickOutside(gearFloatingDom, () => {
+  gearOpen.value = false
+})
+const openGuideClienti = () => {
+  gearOpen.value = false
+  router.push({ name: 'progetti' })
+}
 
 const steps = ref<GuideStep[]>([])
 const selection = ref('settings')
@@ -793,6 +808,37 @@ watch(
           variant="invisible"
           size="md"
         />
+        <FzFloating
+          ref="gearFloating"
+          position="right-start"
+          :is-open="gearOpen"
+          teleport
+          content-class="!ml-8 z-60"
+        >
+          <template #opener>
+            <FzIconButton
+              iconName="gear"
+              variant="invisible"
+              size="md"
+              aria-label="Pagine disponibili"
+              @click="gearOpen = !gearOpen"
+            />
+          </template>
+          <FzActionList list-class="!gap-8">
+            <FzActionSection label="Strumenti" environment="backoffice">
+              <FzAction type="action" environment="backoffice" label="Archivio Cespiti" />
+              <FzAction type="action" environment="backoffice" label="Convertitore di valuta" />
+            </FzActionSection>
+            <FzActionSection environment="backoffice">
+              <FzAction
+                type="action"
+                environment="backoffice"
+                label="Guide clienti"
+                @click="openGuideClienti"
+              />
+            </FzActionSection>
+          </FzActionList>
+        </FzFloating>
       </template>
       <template #user-menu>
         <FzAvatar first-name="Mario" last-name="Rossi" environment="backoffice" />
