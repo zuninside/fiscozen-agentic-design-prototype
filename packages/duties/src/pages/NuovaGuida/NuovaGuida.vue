@@ -204,7 +204,8 @@ const foTaskQueryTargetOptions = [
   { value: 'missing_declaration', label: 'Dichiarazione non ancora inviata' },
   { value: 'overdue_f24', label: 'F24 in scadenza o scaduti' },
   { value: 'incomplete_profile', label: 'Profilo incompleto' },
-  { value: 'welfare_pending', label: 'Contributi previdenziali da versare' }
+  { value: 'welfare_pending', label: 'Contributi previdenziali da versare' },
+  { value: 'architetti_ingegneri', label: 'Utenti architetti e ingegneri' }
 ]
 const foTaskStartDate = ref<Date | null>(null)
 // La data di inizio non può essere anteriore a oggi (giorno di creazione).
@@ -244,7 +245,7 @@ const adempimentoPresets: Record<string, TaskPreset> = {
   comunicazione_reddituale_enpam: { title: 'Comunica i tuoi redditi a ENPAM', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
   comunicazione_reddituale_enpap: { title: 'Comunica i tuoi redditi a ENPAP', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
   comunicazione_reddituale_enpapi: { title: 'Comunica i tuoi redditi a ENPAPI', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
-  comunicazione_reddituale_inarcassa: { title: 'Comunica i tuoi redditi a Inarcassa', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
+  comunicazione_reddituale_inarcassa: { title: 'Comunica i tuoi redditi a Inarcassa', queryTarget: 'architetti_ingegneri', startDate: null, endDate: null, hasDeadline: false, deadline: null },
   comunicazione_reddituale_forense: { title: 'Comunica i tuoi redditi a Cassa forense', queryTarget: 'welfare_pending', startDate: new Date(2026, 2, 1), endDate: new Date(2026, 6, 31), hasDeadline: true, deadline: new Date(2026, 6, 31) },
   f24: { title: 'Paga il tuo F24', queryTarget: 'overdue_f24', startDate: new Date(2026, 0, 1), endDate: new Date(2026, 11, 31), hasDeadline: true, deadline: new Date(2026, 5, 16) }
 }
@@ -635,7 +636,7 @@ watch(
   },
   { immediate: true }
 )
-const sampleImportoValue = '€ 12.000,00'
+const sampleImportoValue = '€ 0,00'
 
 // Preview-only answer state for the interactive question mock
 const previewSingle = ref<Record<number, string | undefined>>({})
@@ -920,7 +921,7 @@ watch(
                     value="adempimento"
                     label="adempimento"
                     title="Un task esistente"
-                    orientation="vertical"
+                    orientation="horizontal"
                     :has-radio="true"
                     :disabled="isReadOnly"
                     @update:model-value="onGuideLinkChange"
@@ -931,7 +932,7 @@ watch(
                     value="fotask"
                     label="fotask"
                     title="Un nuovo task"
-                    orientation="vertical"
+                    orientation="horizontal"
                     :has-radio="true"
                     :disabled="isReadOnly"
                     @update:model-value="onGuideLinkChange"
@@ -1088,6 +1089,7 @@ watch(
                     @click="addAlert"
                   />
                   <FzButton
+                    v-if="lockedFonteKey"
                     label="Importi"
                     iconName="plus"
                     variant="secondary"
@@ -1192,30 +1194,22 @@ watch(
                         @click="removeImporto(0)"
                       />
                     </div>
+                    <p class="bo-media-hint">Ogni cliente vedrà i propri importi da dichiarare.</p>
                     <div
                       v-for="(importo, index) in currentStep.importi"
                       :key="index"
                       class="bo-importo"
                     >
                       <div class="bo-importo__field">
-                        <FzSelect
-                          v-model="importo.fonte"
-                          label="Fonte dei calcoli"
-                          placeholder="Seleziona la fonte"
-                          :options="fonteOptions"
-                          :error="showErrors && !!currentStepErrors?.importi[index]"
+                        <FzCard
+                          v-for="def in getFonte(importo.fonte)?.importi"
+                          :key="def.key"
+                          color="grey"
                           environment="backoffice"
-                          :disabled="isReadOnly || !!lockedFonteKey"
-                        />
-                        <div v-if="getFonte(importo.fonte)" class="bo-importo__list">
-                          <div
-                            v-for="def in getFonte(importo.fonte)?.importi"
-                            :key="def.key"
-                            class="bo-importo__preview"
-                          >
-                            <span class="bo-importo__preview-label">{{ def.label }}</span>
-                          </div>
-                        </div>
+                          class="bo-importo-card"
+                        >
+                          {{ def.label }}
+                        </FzCard>
                       </div>
                     </div>
                   </div>
@@ -1696,8 +1690,12 @@ watch(
   flex: 1 1 0;
   min-width: 0;
 }
+/* Label della card = token "label/normal-emphasized" (Inter SemiBold 16/20) */
 .bo-link-group :deep(label p.font-medium) {
+  font-size: 16px;
   font-weight: 600;
+  line-height: 20px;
+  color: #2c282f;
 }
 .bo-link-detail {
   display: flex;
@@ -1791,11 +1789,12 @@ watch(
   padding-left: 32px;
 }
 .bo-section__desc {
+  /* token "label/normal" (Inter Regular 16/20) + colore core/black */
   margin: 0 0 -16px;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 400;
   line-height: 20px;
-  color: #596167;
+  color: #2c282f;
 }
 .bo-media-hint {
   /* Paragraph (16px) + colore core/black, come gli altri testi */
@@ -1845,26 +1844,12 @@ watch(
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-}
-.bo-importo__list {
-  display: flex;
-  flex-direction: column;
   gap: 8px;
 }
-.bo-importo__preview {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 12px;
-  background: #f7f9fa;
-  border: 1px solid #e9edf0;
-  border-radius: 8px;
-}
-.bo-importo__preview-label {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
+.bo-importo-card {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
   color: #2c282f;
 }
 .bo-documento {
