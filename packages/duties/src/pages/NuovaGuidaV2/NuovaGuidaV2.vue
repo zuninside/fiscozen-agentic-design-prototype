@@ -274,13 +274,20 @@ const onAdempimentoChange = (value: string | number | undefined) => {
 }
 // Cambio opzione: "nuovo task" riparte vuoto, "task esistente" ricarica il preset.
 const onGuideLinkChange = (value: string | number) => {
-  if (value === 'fotask') clearTaskFields()
-  else if (adempimento.value) applyTaskPreset(adempimentoPresets[String(adempimento.value)])
+  // "A tutti i clienti": nessun dato specifico, si azzera tutto.
+  if (value === 'adempimento') {
+    adempimento.value = undefined
+    clearTaskFields()
+    return
+  }
+  // "Ad alcuni i clienti": ricarica i dati dell'adempimento già scelto.
+  if (adempimento.value) applyTaskPreset(adempimentoPresets[String(adempimento.value)])
   else clearTaskFields()
 }
-// I campi del task sono visibili per il nuovo task o per un adempimento scelto.
+// Valori interni: 'adempimento' = "A tutti i clienti", 'fotask' = "Ad alcuni i clienti".
+// I dati del task compaiono solo per "Ad alcuni i clienti", una volta scelto l'adempimento.
 const showsTaskFields = computed(
-  () => guideLink.value === 'fotask' || (guideLink.value === 'adempimento' && !!adempimento.value)
+  () => guideLink.value === 'fotask' && !!adempimento.value
 )
 
 // --- Campi obbligatori -------------------------------------------------------
@@ -291,10 +298,7 @@ const isBlank = (v: unknown) =>
 
 const settingsFieldErrors = computed(() => ({
   guideName: isBlank(guideName.value),
-  adempimento: guideLink.value === 'adempimento' && isBlank(adempimento.value),
-  foTaskTitle: showsTaskFields.value && isBlank(foTaskTitle.value),
-  foTaskQueryTarget: showsTaskFields.value && isBlank(foTaskQueryTarget.value),
-  foTaskStartDate: showsTaskFields.value && !foTaskStartDate.value
+  adempimento: guideLink.value === 'fotask' && isBlank(adempimento.value)
 }))
 const settingsHasErrors = computed(() =>
   Object.values(settingsFieldErrors.value).some(Boolean)
@@ -359,7 +363,7 @@ const mapSteps = (src: GuideStep[]): GuideStep[] =>
   }))
 
 // Rilevamento modifiche non salvate: snapshot (JSON) dei campi persistiti
-// confrontato con lo stato corrente. I File nei passaggi diventano {} in JSON,
+// confrontato con lo stato corrente. I File nelle pagine diventano {} in JSON,
 // ma aggiunte/rimozioni sono comunque rilevate dalla lunghezza degli array.
 const serializeState = () =>
   JSON.stringify({
@@ -444,7 +448,7 @@ const comunicazioneReddituFonte: Record<string, string> = {
   comunicazione_reddituale_forense: 'forense_welfare'
 }
 const lockedFonteKey = computed(() =>
-  guideLink.value === 'adempimento'
+  guideLink.value === 'fotask'
     ? comunicazioneReddituFonte[String(adempimento.value)] ?? null
     : null
 )
@@ -544,17 +548,19 @@ const persist = (status: 'draft' | 'published') => {
       foTaskDeadline: foTaskDeadline.value
     }
   }
+  let guideId = editingId.value
   if (editingId.value) {
     updateGuide(editingId.value, draft, status)
   } else {
-    const id = addGuide(draft, status)
+    guideId = addGuide(draft, status)
     router.replace({
-      name: 'nuova-guida',
-      params: { id: String(id) }
+      name: 'nuova-guida-v2',
+      params: { id: String(guideId) }
     })
   }
   // Allineo la baseline: dopo il salvataggio non ci sono più modifiche pendenti.
   savedState.value = serializeState()
+  return guideId
 }
 
 const save = () => {
@@ -562,12 +568,36 @@ const save = () => {
   enqueueToast({ type: 'success', message: 'Guida salvata correttamente' }, toastQueue)
 }
 
+// Dopo la pubblicazione i campi lasciano il posto, per 10 secondi, a un
+// messaggio di conferma centrato (con il link da condividere quando la pagina
+// è rivolta a tutti i clienti).
+const publishSuccess = ref(false)
+const publishedLink = ref('')
+const linkCopied = ref(false)
+let publishSuccessTimer: ReturnType<typeof setTimeout> | undefined
+
+const copyPublishedLink = async () => {
+  try {
+    await navigator.clipboard.writeText(publishedLink.value)
+    linkCopied.value = true
+    setTimeout(() => (linkCopied.value = false), 2000)
+  } catch {
+    /* clipboard non disponibile: il link resta comunque selezionabile */
+  }
+}
+
 const publish = () => {
   const message = isPublished.value
     ? 'Guida aggiornata correttamente'
     : 'Guida pubblicata correttamente'
-  persist('published')
+  const guideId = persist('published')
   enqueueToast({ type: 'success', message }, toastQueue)
+
+  publishedLink.value = `https://fiscozen.it/guide/${guideId ?? ''}`
+  linkCopied.value = false
+  publishSuccess.value = true
+  clearTimeout(publishSuccessTimer)
+  publishSuccessTimer = setTimeout(() => (publishSuccess.value = false), 10000)
 }
 
 const previewStep = computed(() => currentStep.value ?? steps.value[0])
@@ -579,7 +609,7 @@ const previewIsLastStep = computed(
 )
 const previewSteps = computed(() =>
   steps.value.map((s, i) => ({
-    title: s.title || 'Titolo passaggio',
+    title: s.title || 'Titolo pagina',
     status: i < previewIndex.value ? ('completed' as const) : undefined,
     hasStepDescription: false
   }))
@@ -725,18 +755,13 @@ watch(
       </template>
     </FzConfirmDialog>
 
-    <FzConfirmDialog ref="startInfoDialog" size="md" title="Punto di partenza">
+    <FzConfirmDialog ref="startInfoDialog" size="md" title="Tipo di pagina">
       <template #body>
         <p>
-          Il <strong>punto di partenza</strong> definisce a cosa è collegata la guida e da
-          dove l'utente potrà aprirla. Puoi collegarla a un <strong>task esistente</strong>
-          (un adempimento o un'attività già presente, come la Dichiarazione dei Redditi o
-          un invito a caricare un documento) oppure creare <strong>un nuovo task</strong>,
-          che comparirà nella dashboard del cliente prima della guida.
-        </p>
-        <p>
-          Sceglierlo è necessario perché determina <strong>dove e quando</strong> la guida
-          verrà mostrata all'utente.
+          Il <strong>tipo di pagina</strong> definisce a chi è destinata la guida.
+          Scegli <strong>Per tutti i clienti</strong> per una pagina da condividere con
+          tutti, senza dati specifici; scegli <strong>Per alcuni clienti</strong> quando
+          la guida è rivolta solo ad alcuni clienti e mostra i dati di ciascuno.
         </p>
       </template>
       <template #footer>
@@ -883,14 +908,14 @@ watch(
               name="guide-nav"
               :value="`step-${step.id}`"
               :label="`step-${step.id}`"
-              :title="`${index + 1}° passaggio`"
+              :title="`Pagina ${index + 1}`"
               :subtitle="step.title"
               orientation="horizontal"
               :has-radio="false"
             />
           </div>
           <div class="bo-steps__add">
-            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi passaggio" :disabled="isReadOnly" @click="addStep" />
+            <FzIconButton iconName="plus" variant="secondary" environment="backoffice" aria-label="Aggiungi pagina" :disabled="isReadOnly" @click="addStep" />
           </div>
         </section>
 
@@ -898,29 +923,55 @@ watch(
         <section class="bo-editor">
           <!-- Version tabs: shown only when a Live snapshot and a divergent Bozza both exist -->
           <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isReadOnly }">
-          <template v-if="isSettings">
+          <!-- Conferma di pubblicazione: sostituisce i campi per 10 secondi -->
+          <div v-if="publishSuccess" class="bo-publish-success">
+            <p class="bo-publish-success__title">Pagina creata correttamente</p>
+            <p class="bo-publish-success__desc">
+              {{
+                guideLink === 'adempimento'
+                  ? 'Copia il link e condividila con i clienti:'
+                  : "Sarà disponibile a tutti i clienti che dovranno fare l'adempimento scelto."
+              }}
+            </p>
+            <div v-if="guideLink === 'adempimento'" class="bo-publish-success__link">
+              <FzInput
+                :model-value="publishedLink"
+                environment="backoffice"
+                :disabled="true"
+              />
+              <FzIconButton
+                iconName="clone"
+                variant="secondary"
+                environment="backoffice"
+                :aria-label="linkCopied ? 'Link copiato' : 'Copia il link'"
+                @click="copyPublishedLink"
+              />
+            </div>
+          </div>
+          <template v-else-if="isSettings">
             <div class="bo-section">
               <div class="bo-section__title">
                 <FzIcon name="arrow-right" size="md" class="bo-section__icon" />
-                <span class="bo-section__heading">Punto di partenza</span>
+                <span class="bo-section__heading">Tipo di pagina</span>
                 <FzIconButton
                   iconName="circle-question"
                   variant="invisible"
                   size="sm"
                   environment="backoffice"
-                  aria-label="Cos'è il punto di partenza?"
+                  aria-label="Che cos'è il tipo di pagina?"
                   @click="startInfoDialog?.show()"
                 />
               </div>
               <div class="bo-section__body">
-                <p class="bo-section__desc">A cosa vuoi collegare questa guida?</p>
+                <p class="bo-section__desc">A chi è rivolta questa pagina?</p>
                 <FzRadioGroup variant="horizontal" name="guide-link" class="bo-link-group">
                   <FzRadioCard
                     v-model="guideLink"
                     name="guide-link"
                     value="adempimento"
                     label="adempimento"
-                    title="Un task esistente"
+                    title="A tutti i clienti"
+                    subtitle="Ideale per pagine da condividere a tutti, senza dati specifici dei clienti"
                     orientation="horizontal"
                     :has-radio="true"
                     :disabled="isReadOnly"
@@ -931,7 +982,8 @@ watch(
                     name="guide-link"
                     value="fotask"
                     label="fotask"
-                    title="Un nuovo task"
+                    title="Ad alcuni i clienti"
+                    subtitle="Perfetta per guide da condividere solo ad alcuni clienti e con i dati specifici di ciascuno."
                     orientation="horizontal"
                     :has-radio="true"
                     :disabled="isReadOnly"
@@ -939,67 +991,17 @@ watch(
                   />
                 </FzRadioGroup>
 
-                <div v-if="guideLink === 'adempimento'" class="bo-link-detail">
-                  <p class="bo-link-intro">La guida verrà associata all'adempimento o al task che scegli.<br />Ad esempio: Comunicazioni reddituali, Certificazione Unica, Dichiarazione IVA, Richiedi l'IMU</p>
+                <div v-if="guideLink === 'fotask'" class="bo-link-detail">
+                  <p class="bo-link-intro">Scegli l'adempimento per il quale vuoi creare questa pagina.</p>
                   <FzSelect
                     v-model="adempimento"
-                    label="Quale adempimento o task?"
+                    label="Adempimento"
                     :options="adempimentoOptions"
                     filterable
                     environment="backoffice"
                     :error="showErrors && settingsFieldErrors.adempimento"
                     :disabled="isReadOnly"
                     @update:model-value="onAdempimentoChange"
-                  />
-                </div>
-                <p v-else class="bo-link-intro">
-                  Compila i campi per creare un nuovo task da mostrare all'utente prima di aprire la guida.
-                </p>
-
-                <div v-if="showsTaskFields" class="bo-link-detail bo-link-detail--fotask">
-                  <FzInput
-                    v-model="foTaskTitle"
-                    label="Titolo FO Task"
-                    placeholder="Scrivi il titolo del task"
-                    environment="backoffice"
-                    :error="showErrors && settingsFieldErrors.foTaskTitle"
-                    :disabled="isReadOnly"
-                  >
-                    <template #helpText>È quello che comparirà nella dashboard dell'utente</template>
-                  </FzInput>
-                  <FzSelect
-                    v-model="foTaskQueryTarget"
-                    label="Query target"
-                    :options="foTaskQueryTargetOptions"
-                    filterable
-                    environment="backoffice"
-                    :error="showErrors && settingsFieldErrors.foTaskQueryTarget"
-                    :disabled="isReadOnly"
-                  />
-                  <div class="bo-date-row">
-                    <FzDatepicker
-                      v-model="foTaskStartDate"
-                      :min-date="taskStartMinDate"
-                      :input-props="{ label: 'Data di inizio', placeholder: 'gg/mm/aaaa', environment: 'backoffice', error: showErrors && settingsFieldErrors.foTaskStartDate }"
-                      :disabled="isReadOnly"
-                    >
-                      <template #helpText>È la data in cui verrà mostrato il task</template>
-                    </FzDatepicker>
-                    <FzDatepicker
-                      v-model="foTaskEndDate"
-                      :min-date="foTaskStartDate ?? taskStartMinDate"
-                      :input-props="{ label: 'Data di fine', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
-                      :disabled="isReadOnly"
-                    >
-                      <template #helpText>È la data in cui verrà tolto il task</template>
-                    </FzDatepicker>
-                  </div>
-                  <FzDatepicker
-                    v-model="foTaskDeadline"
-                    :min-date="foTaskStartDate ?? taskStartMinDate"
-                    :max-date="foTaskEndDate ?? undefined"
-                    :input-props="{ label: 'Da fare entro il', placeholder: 'gg/mm/aaaa', environment: 'backoffice' }"
-                    :disabled="isReadOnly"
                   />
                 </div>
               </div>
@@ -1026,18 +1028,18 @@ watch(
 
           </template>
           <template v-else-if="currentStep">
-            <!-- Section: Titolo passaggio (only with more than one step) -->
+            <!-- Section: Titolo pagina (only with more than one page) -->
             <template v-if="steps.length > 1">
               <div class="bo-section">
                 <div class="bo-section__title">
                   <FzIcon name="pencil" size="md" class="bo-section__icon" />
-                  <span class="bo-section__heading">Titolo passaggio</span>
+                  <span class="bo-section__heading">Titolo pagina</span>
                 </div>
                 <div class="bo-section__body">
                   <FzInput
                     :key="currentStep.id"
                     v-model="currentStep.title"
-                    placeholder="Scrivi il titolo di questo passaggio"
+                    placeholder="Scrivi il titolo di questa pagina"
                     environment="backoffice"
                     :error="showErrors && !!currentStepErrors?.title"
                     :disabled="isReadOnly"
@@ -1121,7 +1123,7 @@ watch(
                   <FzTextarea
                     :key="currentStep.id"
                     v-model="currentStep.description"
-                    placeholder="Scrivi la descrizione del passaggio…"
+                    placeholder="Scrivi la descrizione della pagina…"
                     :rows="6"
                     resize="vertical"
                     :error="showErrors && !!currentStepErrors?.description"
@@ -1368,10 +1370,10 @@ watch(
           </div>
 
           <!-- Footer: delete step (solo con più di uno step) -->
-          <div v-if="currentStep && steps.length > 1" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isReadOnly }">
+          <div v-if="!publishSuccess && currentStep && steps.length > 1" class="bo-editor__footer" :class="{ 'bo-editor__footer--readonly': isReadOnly }">
             <FzButton
               v-if="steps.length > 1"
-              label="Elimina passaggio"
+              label="Elimina pagina"
               iconName="trash"
               variant="danger"
               environment="backoffice"
@@ -1429,7 +1431,7 @@ watch(
                     </FzAlert>
                     <!-- Main content / description -->
                     <p class="bo-phone__desc">
-                      {{ previewStep.description || 'La descrizione del passaggio apparirà qui.' }}
+                      {{ previewStep.description || 'La descrizione della pagina apparirà qui.' }}
                     </p>
                     <!-- Alert after description -->
                     <FzAlert
@@ -1582,7 +1584,7 @@ watch(
                   </div>
                 </template>
                 <div v-else class="bo-phone__empty">
-                  Aggiungi un passaggio per vedere l'anteprima
+                  Aggiungi una pagina per vedere l'anteprima
                 </div>
               </div>
             </div>
@@ -1707,6 +1709,45 @@ watch(
   justify-content: flex-end;
   gap: 8px;
   width: 100%;
+}
+/* Conferma di pubblicazione (sostituisce i campi per 10 secondi) */
+.bo-publish-success {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+}
+.bo-publish-success__title {
+  /* token "title/small" (Inter SemiBold 17/24) */
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+  color: #2c282f;
+}
+.bo-publish-success__desc {
+  /* token "paragraph/normal" (Inter Regular 16/24) */
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  color: #2c282f;
+}
+.bo-publish-success__link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+  margin-top: 8px;
+}
+.bo-publish-success__link > :first-child {
+  flex: 1;
+  min-width: 0;
 }
 .bo-link-intro {
   margin: 0;

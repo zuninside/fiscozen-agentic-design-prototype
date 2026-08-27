@@ -6,6 +6,7 @@ import { BackofficeDashboard } from './pages/BackofficeDashboard'
 import { RegistrazioneContabile } from './pages/RegistrazioneContabile'
 import { Guide } from './pages/Guide'
 import { NuovaGuida } from './pages/NuovaGuida'
+import { NuovaGuidaV2 } from './pages/NuovaGuidaV2'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -37,6 +38,11 @@ const routes: RouteRecordRaw[] = [
     path: '/guide-clienti/nuova-guida/:id?',
     name: 'nuova-guida',
     component: NuovaGuida
+  },
+  {
+    path: '/guide-clienti/nuova-guida-v2/:id?',
+    name: 'nuova-guida-v2',
+    component: NuovaGuidaV2
   }
 ]
 

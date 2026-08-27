@@ -13,10 +13,10 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5176,
+    port: process.env.PORT ? Number(process.env.PORT) : 5176,
     strictPort: false
   },
   preview: {
-    port: 5176
+    port: process.env.PORT ? Number(process.env.PORT) : 5176
   }
 })

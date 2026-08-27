@@ -107,7 +107,21 @@ const rowActions = (guide: Guide) => {
   return { items }
 }
 
-const openEditor = () => router.push({ name: 'nuova-guida' })
+// Menu "Nuova guida": scelta della versione dell'editor (V1 / V2)
+const newGuideOpen = ref(false)
+const newGuideFloating = ref<ComponentPublicInstance>()
+const newGuideFloatingDom = computed(() => newGuideFloating.value?.$el)
+useClickOutside(newGuideFloatingDom, () => {
+  newGuideOpen.value = false
+})
+const openEditor = () => {
+  newGuideOpen.value = false
+  router.push({ name: 'nuova-guida' })
+}
+const openEditorV2 = () => {
+  newGuideOpen.value = false
+  router.push({ name: 'nuova-guida-v2' })
+}
 const editGuide = (guide: Guide) =>
   router.push({ name: 'nuova-guida', params: { id: String(guide.id) } })
 
@@ -172,7 +186,7 @@ const onRowAction = (
           position="right-start"
           :is-open="gearOpen"
           teleport
-          content-class="!ml-8 z-60"
+          content-class="!ml-10 z-60"
         >
           <template #opener>
             <FzIconButton
@@ -210,13 +224,39 @@ const onRowAction = (
       <header class="bo-header">
         <h1 class="bo-header__title">Guide clienti</h1>
         <div class="bo-header__actions">
-          <FzButton
-            label="Nuova guida"
-            iconName="plus"
-            variant="primary"
-            environment="backoffice"
-            @click="openEditor"
-          />
+          <FzFloating
+            ref="newGuideFloating"
+            position="bottom-end"
+            :is-open="newGuideOpen"
+            teleport
+            content-class="!mt-4 z-60"
+          >
+            <template #opener>
+              <FzButton
+                label="Nuova guida"
+                iconName="plus"
+                variant="primary"
+                environment="backoffice"
+                @click="newGuideOpen = !newGuideOpen"
+              />
+            </template>
+            <FzActionList list-class="!gap-8">
+              <FzActionSection environment="backoffice">
+                <FzAction
+                  type="action"
+                  environment="backoffice"
+                  label="V1"
+                  @click="openEditor"
+                />
+                <FzAction
+                  type="action"
+                  environment="backoffice"
+                  label="V2"
+                  @click="openEditorV2"
+                />
+              </FzActionSection>
+            </FzActionList>
+          </FzFloating>
         </div>
       </header>
 
