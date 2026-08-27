@@ -572,18 +572,32 @@ const save = () => {
 // messaggio di conferma centrato (con il link da condividere quando la pagina
 // è rivolta a tutti i clienti).
 const publishSuccess = ref(false)
-const publishedLink = ref('')
+const publishedGuideId = ref<number | undefined>()
+// L'id arriva dal salvataggio (per una guida nuova la rotta non è ancora aggiornata)
+const publishedLink = computed(
+  () => `https://fiscozen.it/guide/${editingId.value ?? publishedGuideId.value ?? ''}`
+)
 const linkCopied = ref(false)
 let publishSuccessTimer: ReturnType<typeof setTimeout> | undefined
 
 const copyPublishedLink = async () => {
+  const link = publishedLink.value
   try {
-    await navigator.clipboard.writeText(publishedLink.value)
-    linkCopied.value = true
-    setTimeout(() => (linkCopied.value = false), 2000)
+    await navigator.clipboard.writeText(link)
   } catch {
-    /* clipboard non disponibile: il link resta comunque selezionabile */
+    // Fallback per i contesti in cui la Clipboard API è bloccata (es. iframe)
+    const el = document.createElement('textarea')
+    el.value = link
+    el.setAttribute('readonly', '')
+    el.style.position = 'fixed'
+    el.style.opacity = '0'
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
   }
+  linkCopied.value = true
+  setTimeout(() => (linkCopied.value = false), 2000)
 }
 
 const publish = () => {
@@ -593,7 +607,7 @@ const publish = () => {
   const guideId = persist('published')
   enqueueToast({ type: 'success', message }, toastQueue)
 
-  publishedLink.value = `https://fiscozen.it/guide/${guideId ?? ''}`
+  publishedGuideId.value = guideId
   linkCopied.value = false
   publishSuccess.value = true
   clearTimeout(publishSuccessTimer)
@@ -922,9 +936,12 @@ watch(
         <!-- Column 2: editor -->
         <section class="bo-editor">
           <!-- Version tabs: shown only when a Live snapshot and a divergent Bozza both exist -->
-          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isReadOnly }">
+          <div class="bo-editor__content" :class="{ 'bo-editor__content--readonly': isReadOnly && !publishSuccess }">
           <!-- Conferma di pubblicazione: sostituisce i campi per 10 secondi -->
           <div v-if="publishSuccess" class="bo-publish-success">
+            <span class="bo-publish-success__icon">
+              <FzIcon name="check" size="xl" />
+            </span>
             <p class="bo-publish-success__title">Pagina creata correttamente</p>
             <p class="bo-publish-success__desc">
               {{
@@ -940,7 +957,7 @@ watch(
                 :disabled="true"
               />
               <FzIconButton
-                iconName="clone"
+                :iconName="linkCopied ? 'check' : 'clone'"
                 variant="secondary"
                 environment="backoffice"
                 :aria-label="linkCopied ? 'Link copiato' : 'Copia il link'"
@@ -1023,6 +1040,21 @@ watch(
                   :error="showErrors && settingsFieldErrors.guideName"
                   :disabled="isReadOnly"
                 />
+                <div v-if="isPublished && guideLink === 'adempimento'" class="bo-guide-link">
+                  <FzInput
+                    :model-value="publishedLink"
+                    label="Link della pagina"
+                    environment="backoffice"
+                    :disabled="true"
+                  />
+                  <FzIconButton
+                    :iconName="linkCopied ? 'check' : 'clone'"
+                    variant="secondary"
+                    environment="backoffice"
+                    :aria-label="linkCopied ? 'Link copiato' : 'Copia il link'"
+                    @click="copyPublishedLink"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1721,12 +1753,41 @@ watch(
   text-align: center;
   padding: 24px;
 }
+.bo-guide-link {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.bo-guide-link > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+/* il link resta copiabile anche quando la guida è in sola lettura */
+.bo-editor__content--readonly .bo-guide-link,
+.bo-editor__content--readonly .bo-guide-link :deep(*) {
+  pointer-events: auto;
+}
+.bo-publish-success__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: #f2f8f6;
+  color: #0fa88c;
+  margin-bottom: 16px;
+}
+.bo-publish-success__icon :deep(svg) {
+  width: 40px;
+  height: 40px;
+}
 .bo-publish-success__title {
-  /* token "title/small" (Inter SemiBold 17/24) */
+  /* token "title/normal" (Inter SemiBold 20/28) */
   margin: 0;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 28px;
   color: #2c282f;
 }
 .bo-publish-success__desc {
