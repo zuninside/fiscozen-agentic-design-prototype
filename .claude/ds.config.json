@@ -1,0 +1,44 @@
+{
+  "$comment": "MONOREPO / WORKSPACE shape (e.g. the FDS hub). Copy to <repo>/.claude/ds.config.json and tune. 'adapter' selects a DS binding under the plugin's adapters/. Everything else describes THIS repo's layout + tooling, so the engine works on any repo shape. Without this file, the plugin's write-time hooks and SessionStart scripts no-op (exit 0) — safe to enable org-wide. See ds.config.flat-example.json for a single-app repo.",
+
+  "adapter": "fiscozen",
+
+  "packageManager": "pnpm",
+  "workspaceNamespace": "@fz-design",
+  "workspaces": ["accounting", "customers", "duties", "shared"],
+  "sharedWorkspace": "shared",
+  "workspaceGlob": "packages/*",
+  "sourceGlob": "packages/*/src",
+
+  "componentPathPattern": "packages/[^/]+/src/(molecules|organisms|templates|pages)/",
+  "componentLayers": ["molecules", "organisms"],
+  "layerDirs": {
+    "molecule": "molecules",
+    "organism": "organisms",
+    "template": "templates",
+    "page": "pages",
+    "composable": "composables"
+  },
+
+  "$comment_layouts": "REPO-LOCAL page shells only — the ones THIS repo owns. The design system's own page layouts are declared by the adapter's `layoutManifest` and generated into `layoutsPath`; do NOT hand-copy them here. The sanctioned set a page may wrap in is the UNION of the two, and the DS manifest is the richer source (kind, height contract, nesting rules, compose-only gaps). Leave this empty if the repo uses only DS layouts.",
+  "layouts": [
+    { "name": "FrontofficeLayout", "surface": "FO", "import": "@fz-design/shared/templates", "description": "app clienti, mobile-first", "slots": ["#sidebar", "default", "#chat"] },
+    { "name": "BackofficeLayout", "surface": "BO", "import": "@fz-design/shared/templates", "description": "tool team interno, desktop-first", "slots": ["#sidebar", "default"] }
+  ],
+
+  "cachePath": ".cache/design_system",
+  "inventoryPath": ".claude/design-system-inventory.md",
+  "cataloguePath": ".claude/entity-catalogue.md",
+  "layoutsPath": ".claude/design-system-layouts.md",
+
+  "branchPrefix": "design",
+  "ticketSystem": "Jira",
+
+  "installCommandTemplate": "pnpm add -F {workspace} {package}@{version}",
+  "devCommandTemplate": "pnpm dev:{workspace}",
+  "lintCommandTemplate": "pnpm --filter {workspace} lint",
+  "lintFixCommandTemplate": "pnpm --filter {workspace} lint:fix",
+  "annotateCommand": "pnpm annotate-design",
+
+  "skipInventoryRefreshInCI": true
+}

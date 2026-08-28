@@ -1,0 +1,53 @@
+{
+  "name": "fiscozen",
+  "packageNamespace": "@fiscozen",
+  "componentPrefix": "Fz",
+  "layoutPrimitive": "FzContainer",
+  "layoutManifest": "packages/layout/layouts.json",
+  "stylePackage": "@fiscozen/style",
+  "styleDirectives": "v-bold, v-color:<token>",
+  "inventory": {
+    "repo": "https://github.com/fiscozen/design_system",
+    "branch": "main",
+    "sparsePaths": ["packages", ".changeset"]
+  },
+  "surfaces": ["FO", "BO"],
+  "stylingPolicy": "compose-only",
+  "principlesReviewer": "fz-design-principles:fiscozen-design-principles-reviewer",
+  "forbiddenTags": [
+    "div", "button", "input", "select", "textarea", "form",
+    "table", "thead", "tbody", "tfoot", "tr", "td", "th", "caption", "colgroup", "col",
+    "a", "img", "ul", "ol", "li", "dl", "dt", "dd",
+    "dialog", "label", "fieldset", "legend", "optgroup", "option",
+    "picture", "video", "audio", "source", "track", "iframe", "canvas", "svg",
+    "details", "summary"
+  ],
+  "allowedBareTags": [
+    "p", "span", "h1", "h2", "h3", "h4", "h5", "h6",
+    "strong", "em", "code", "pre", "small", "b", "i", "u", "s", "sub", "sup",
+    "br", "hr", "blockquote"
+  ],
+  "componentEquivalents": {
+    "div": "FzContainer (the only layout primitive)",
+    "button": "FzButton",
+    "input": "FzInput / FzInputText (see the DS inventory)",
+    "select": "FzSelect",
+    "textarea": "FzTextarea",
+    "table": "FzTable",
+    "a": "FzLink / FzNavlink",
+    "dialog": "FzDialog",
+    "ul": "the relevant @fiscozen/* list component, or FzContainer + items"
+  },
+  "annotationAttr": "data-fz-component",
+  "annotateMap": [
+    { "tag": "input", "when": "type in [date, datetime-local, month]", "component": "FzDatepicker" },
+    { "tag": "input", "except": "type in [hidden, file]", "component": "FzInput" },
+    { "tag": "textarea", "component": "FzTextarea" },
+    { "tag": "select", "component": "FzSelect" },
+    { "tag": "button", "when": "icon-only (no text, only svg/i/img/span/path children)", "component": "FzIconButton" },
+    { "tag": "button", "component": "FzButton" },
+    { "tag": "table", "component": "FzSimpleTable" },
+    { "tag": "dialog", "component": "FzDialog" }
+  ],
+  "eslintPluginVersion": "^1.0.0"
+}
