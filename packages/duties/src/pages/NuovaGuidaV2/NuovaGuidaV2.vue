@@ -573,10 +573,12 @@ const save = () => {
 // è rivolta a tutti i clienti).
 const publishSuccess = ref(false)
 const publishedGuideId = ref<number | undefined>()
-// L'id arriva dal salvataggio (per una guida nuova la rotta non è ancora aggiornata)
-const publishedLink = computed(
-  () => `https://fiscozen.it/guide/${editingId.value ?? publishedGuideId.value ?? ''}`
-)
+// L'id arriva dal salvataggio (per una guida nuova la rotta non è ancora aggiornata).
+// Per le pagine rivolte ad alcuni clienti l'URL termina con /id (il cliente).
+const publishedLink = computed(() => {
+  const base = `https://fiscozen.it/guide/${editingId.value ?? publishedGuideId.value ?? ''}`
+  return guideLink.value === 'fotask' ? `${base}/id` : base
+})
 const linkCopied = ref(false)
 let publishSuccessTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -1040,7 +1042,7 @@ watch(
                   :error="showErrors && settingsFieldErrors.guideName"
                   :disabled="isReadOnly"
                 />
-                <div v-if="isPublished && guideLink === 'adempimento'" class="bo-guide-link">
+                <div v-if="isPublished" class="bo-guide-link">
                   <FzInput
                     :model-value="publishedLink"
                     label="Link della pagina"
